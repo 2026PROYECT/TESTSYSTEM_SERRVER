@@ -45,9 +45,6 @@ class VerificationController extends Controller
                 'footer' => 'EmiSystem - Verificación de Integridad Académica'
             ];
 
-            // ⚠️ SOLO agregar 'student' si es necesario (no para reportes generales)
-            // El bloque 'student' se agregará solo en los casos que lo necesiten
-
             // === SEGÚN EL TIPO DE VERIFICACIÓN ===
             switch ($verification->type) {
 
@@ -71,7 +68,6 @@ class VerificationController extends Controller
                         'color' => 'indigo'
                     ];
                     
-                    // Datos del estudiante
                     $studentUser = $source->student;
                     if ($studentUser) {
                         $responseData['student'] = [
@@ -83,12 +79,10 @@ class VerificationController extends Controller
                         ];
                     }
                     
-                    // Datos del examen
                     $assignment = $source->assignment;
                     $language = $assignment?->language;
                     $languageName = $language->name ?? 'No especificado';
                     
-                    // Resultados (seguro)
                     $results = $source->results_data;
                     if (is_string($results)) {
                         $results = json_decode($results, true);
@@ -102,7 +96,6 @@ class VerificationController extends Controller
                     $totalPoints = $results['total_points'] ?? 0;
                     $passed = $totalPercentage >= 60;
                     
-                    // Resultados por habilidad
                     $listeningScore = $results['by_type']['listening']['score'] ?? 0;
                     $listeningTotal = $results['by_type']['listening']['total'] ?? 0;
                     $listeningPercentage = $listeningTotal > 0 ? round(($listeningScore / $listeningTotal) * 100) : 0;
@@ -124,6 +117,73 @@ class VerificationController extends Controller
 
                 /**
                  * ==========================================================
+                 * EXAMEN COMPUTARIZADO INDIVIDUAL (COMP_EXAM)
+                 * ==========================================================
+                 */
+                case 'COMP_EXAM':
+                    $source = $verification->verifiable;
+                    if (!$source) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Datos del examen no encontrados'
+                        ], 404);
+                    }
+
+                    $responseData['header'] = [
+                        'title' => 'Certificado de Examen Computarizado',
+                        'icon' => '💻',
+                        'color' => 'emerald'
+                    ];
+                    
+                    $studentUser = $source->student;
+                    if ($studentUser) {
+                        $responseData['student'] = [
+                            'full_name' => trim("{$studentUser->lastname} {$studentUser->name} {$studentUser->surname}"),
+                            'id_card' => $studentUser->studentProfile->id_number ?? 'N/D',
+                            'name' => $studentUser->name ?? 'N/D',
+                            'lastname' => $studentUser->lastname ?? 'N/D',
+                            'career' => $studentUser->studentProfile->career->name ?? 'Carrera no registrada'
+                        ];
+                    }
+                    
+                    $quizTitle = $source->quiz->title ?? 'No especificado';
+                    $score = $source->score ?? 0;
+                    $passed = $score >= 60;
+                    
+                    // Calcular estadísticas de listening/reading
+                    $l_correct = 0;
+                    $l_total = 0;
+                    $r_correct = 0;
+                    $r_total = 0;
+                    
+                    foreach ($source->attemptQuestions as $aq) {
+                        $q = $aq->question;
+                        if (!$q) continue;
+                        
+                        $isCorrect = (int)$aq->selected_option_id === (int)$q->right_answer;
+                        $area = strtoupper(trim($q->area ?? 'R'));
+                        
+                        if ($area === 'L') {
+                            $l_total++;
+                            if ($isCorrect) $l_correct++;
+                        } else {
+                            $r_total++;
+                            if ($isCorrect) $r_correct++;
+                        }
+                    }
+                    
+                    $responseData['stats'] = [
+                        ['label' => '📝 Examen', 'value' => $quizTitle],
+                        ['label' => '🎯 Puntaje Total', 'value' => "{$score}%"],
+                        ['label' => '🎧 Listening', 'value' => "{$l_correct} / {$l_total}"],
+                        ['label' => '📖 Reading', 'value' => "{$r_correct} / {$r_total}"],
+                        ['label' => '📅 Fecha', 'value' => $source->completed_at ? date('d/m/Y', strtotime($source->completed_at)) : 'N/A'],
+                        ['label' => 'Estado', 'value' => $passed ? '✅ APROBADO' : '❌ REPROBADO'],
+                    ];
+                    break;
+
+                /**
+                 * ==========================================================
                  * REPORTE GENERAL MODULAR
                  * ==========================================================
                  */
@@ -137,7 +197,7 @@ class VerificationController extends Controller
                     }
                     
                     $responseData['header'] = [
-                      
+                        'title' => 'Reporte Consolidado - Exámenes Modulares',
                         'icon' => '📊',
                         'color' => 'blue'
                     ];
@@ -147,8 +207,40 @@ class VerificationController extends Controller
                     $approvedCount = $meta['approved_count'] ?? 0;
                     $failedCount = $meta['failed_count'] ?? 0;
                     
-                    // ✅ NO se agrega el bloque 'student' (no hay "Carnet: N/D")
-                    // ✅ NO se agrega "Reporte Institucional"
+                    $responseData['students_list'] = $studentsList;
+                    $responseData['stats'] = [
+                        ['label' => '📅 Fecha emisión', 'value' => $verification->created_at->format('d/m/Y H:i')],
+                        ['label' => '👨‍🎓 Total Estudiantes', 'value' => (string)$totalStudents],
+                        ['label' => '✅ Aprobados', 'value' => (string)$approvedCount],
+                        ['label' => '❌ Reprobados', 'value' => (string)$failedCount],
+                        ['label' => '🔒 Estado', 'value' => 'DOCUMENTO OFICIAL'],
+                    ];
+                    break;
+
+                /**
+                 * ==========================================================
+                 * REPORTE GENERAL COMPUTARIZADO (COMP_GENERAL_REPORT)
+                 * ==========================================================
+                 */
+                case 'COMP_GENERAL_REPORT':
+                    $meta = $verification->metadata;
+                    if (is_string($meta)) {
+                        $meta = json_decode($meta, true);
+                    }
+                    if (!is_array($meta)) {
+                        $meta = [];
+                    }
+                    
+                    $responseData['header'] = [
+                        'title' => 'Reporte Consolidado - Exámenes Computarizados',
+                        'icon' => '📊',
+                        'color' => 'emerald'
+                    ];
+                    
+                    $studentsList = $meta['students'] ?? [];
+                    $totalStudents = $meta['total_students'] ?? count($studentsList);
+                    $approvedCount = $meta['approved_count'] ?? 0;
+                    $failedCount = $meta['failed_count'] ?? 0;
                     
                     $responseData['students_list'] = $studentsList;
                     $responseData['stats'] = [

@@ -57,3 +57,21 @@ powershell
 
 powershell
 git add -f storage/app/public
+
+
+# Script: subir-storage-public.ps1
+# Uso: ejecuta este script dentro de la carpeta raíz de tu proyecto
+
+Write-Host "🔹 Limpiando caché de Git para storage/app/public..."
+git rm -r --cached storage/app/public
+
+Write-Host "🔹 Forzando inclusión de storage/app/public..."
+git add storage/app/public -f
+
+Write-Host "🔹 Creando commit..."
+git commit -m "Incluyendo storage/app/public en el repositorio"
+
+Write-Host "🔹 Subiendo al remoto..."
+git push origin main
+
+Write-Host "✅ Proceso completado. Archivos de storage/app/public ahora están en el repo."

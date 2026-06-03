@@ -46,9 +46,12 @@
                         <tr class="bg-gray-50/50 border-b border-gray-100 text-[10px] font-black uppercase text-gray-400 tracking-widest">
                             <th class="px-8 py-6">Estudiante</th>
                             <th class="px-6 py-6 text-center">Examen</th>
-                            <th class="px-6 py-6 text-center">Estado</th>
+                            <th class="px-6 py-6 text-center">Fecha</th>
                             <th class="px-6 py-6 text-center">Puntaje</th>
-                            <th class="px-4 py-6 text-center">Reporte</th>
+                            <th class="px-6 py-6 text-center">Listening</th>
+                            <th class="px-6 py-6 text-center">Reading</th>
+                            <th class="px-6 py-6 text-center">Estado</th>
+                            <th class="px-4 py-6 text-center">PDF</th>
                             <th class="px-8 py-6 text-right">Acción</th>
                         </tr>
                     </thead>
@@ -77,17 +80,46 @@
                             </td>
 
                             <td class="px-6 py-5 text-center">
-                                <div :class="['inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-[9px] font-black uppercase border', 
-                                    row.status === 'completed' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200']">
-                                    <span :class="['w-1.5 h-1.5 rounded-full', row.status === 'completed' ? 'bg-green-500' : 'bg-amber-500']"></span>
-                                    {{ translateStatus(row.status) }}
-                                </div>
+                                <span class="text-xs font-medium text-gray-600">
+                                    {{ formatDate(row.completed_at) }}
+                                </span>
                             </td>
 
                             <td class="px-6 py-5 text-center font-black text-lg tracking-tighter">
                                 <span :class="row.score >= 60 ? 'text-gray-900' : 'text-rose-500'">
                                     {{ row.score }}%
                                 </span>
+                                <div class="text-[8px] text-gray-400">
+                                    {{ row.correct_answers }}/{{ getTotalQuestions(row) }}
+                                </div>
+                            </td>
+
+                            <td class="px-6 py-5 text-center">
+                                <div class="flex flex-col items-center">
+                                    <span class="font-bold text-sm">{{ row.stats_l || '0/0' }}</span>
+                                    <div class="w-16 bg-gray-200 rounded-full h-1.5 mt-1">
+                                        <div class="bg-emerald-500 h-1.5 rounded-full" 
+                                             :style="{ width: getListeningPercentage(row) + '%' }"></div>
+                                    </div>
+                                </div>
+                            </td>
+
+                            <td class="px-6 py-5 text-center">
+                                <div class="flex flex-col items-center">
+                                    <span class="font-bold text-sm">{{ row.stats_r || '0/0' }}</span>
+                                    <div class="w-16 bg-gray-200 rounded-full h-1.5 mt-1">
+                                        <div class="bg-blue-500 h-1.5 rounded-full" 
+                                             :style="{ width: getReadingPercentage(row) + '%' }"></div>
+                                    </div>
+                                </div>
+                            </td>
+
+                            <td class="px-6 py-5 text-center">
+                                <div :class="['inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-[9px] font-black uppercase border', 
+                                    row.status === 'completed' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200']">
+                                    <span :class="['w-1.5 h-1.5 rounded-full', row.status === 'completed' ? 'bg-green-500' : 'bg-amber-500']"></span>
+                                    {{ translateStatus(row.status) }}
+                                </div>
                             </td>
 
                             <td class="px-4 py-5 text-center">
@@ -111,59 +143,83 @@
         </div>
 
         <div v-else class="py-20 text-center font-black text-gray-400 uppercase text-xs tracking-widest animate-pulse">
-            Sincronizando reportes computarizados...
+            Cargando reportes computarizados...
         </div>
 
-        <!-- ========== MODAL DE DETALLE ========== -->
+        <!-- ========== MODAL DE DETALLE MEJORADO ========== -->
         <div v-if="showModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" @click.self="showModal = false">
             <div class="bg-white rounded-3xl max-w-2xl w-full max-h-[80vh] overflow-y-auto shadow-2xl">
                 <div class="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex justify-between items-center">
-                    <h3 class="font-black text-lg text-gray-900">Detalle del Examen</h3>
+                    <h3 class="font-black text-lg text-gray-900">Detalle del Examen Computarizado</h3>
                     <button @click="showModal = false" class="text-gray-400 hover:text-gray-600">
                         <i class="fas fa-times text-xl"></i>
                     </button>
                 </div>
-                <div class="p-6 space-y-4" v-if="selectedAttempt">
+                <div class="p-6 space-y-6" v-if="selectedAttempt">
+                    
+                    <!-- Información General -->
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <p class="text-xs text-gray-400 uppercase font-bold">Estudiante</p>
+                            <p class="text-[9px] text-gray-400 uppercase font-bold">Estudiante</p>
                             <p class="font-bold text-gray-900">{{ selectedAttempt.student_name }}</p>
                         </div>
                         <div>
-                            <p class="text-xs text-gray-400 uppercase font-bold">Examen</p>
+                            <p class="text-[9px] text-gray-400 uppercase font-bold">Examen</p>
                             <p class="font-bold text-gray-900">{{ selectedAttempt.quiz_title }}</p>
                         </div>
                         <div>
-                            <p class="text-xs text-gray-400 uppercase font-bold">Puntaje</p>
+                            <p class="text-[9px] text-gray-400 uppercase font-bold">Puntaje Total</p>
                             <p class="text-2xl font-black" :class="selectedAttempt.score >= 60 ? 'text-emerald-600' : 'text-rose-600'">
                                 {{ selectedAttempt.score }}%
                             </p>
+                            <p class="text-xs text-gray-500">{{ selectedAttempt.correct_answers }}/{{ getTotalQuestions(selectedAttempt) }} correctas</p>
                         </div>
                         <div>
-                            <p class="text-xs text-gray-400 uppercase font-bold">Estado</p>
-                            <span :class="['px-3 py-1 rounded-full text-[10px] font-black', statusClass(selectedAttempt.status)]">
-                                {{ translateStatus(selectedAttempt.status) }}
-                            </span>
+                            <p class="text-[9px] text-gray-400 uppercase font-bold">Fecha</p>
+                            <p class="text-sm">{{ formatDate(selectedAttempt.completed_at) }}</p>
                         </div>
-                        <div>
-                            <p class="text-xs text-gray-400 uppercase font-bold">Listening</p>
-                            <p class="font-bold">{{ selectedAttempt.stats_l || '0 / 0' }}</p>
+                    </div>
+
+                    <!-- Resultados por Habilidad -->
+                    <div class="bg-gray-50 rounded-2xl p-5">
+                        <h4 class="font-bold text-sm text-gray-700 mb-4">📊 Resultados por Habilidad</h4>
+                        <div class="grid grid-cols-2 gap-6">
+                            <div class="text-center">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="font-bold text-emerald-600">🎧 Listening</span>
+                                    <span class="text-sm font-bold">{{ selectedAttempt.stats_l || '0/0' }}</span>
+                                </div>
+                                <div class="w-full bg-gray-200 h-2 rounded-full">
+                                    <div class="bg-emerald-500 h-2 rounded-full transition-all" 
+                                         :style="{ width: getListeningPercentage(selectedAttempt) + '%' }"></div>
+                                </div>
+                            </div>
+                            <div class="text-center">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="font-bold text-blue-600">📖 Reading</span>
+                                    <span class="text-sm font-bold">{{ selectedAttempt.stats_r || '0/0' }}</span>
+                                </div>
+                                <div class="w-full bg-gray-200 h-2 rounded-full">
+                                    <div class="bg-blue-500 h-2 rounded-full transition-all" 
+                                         :style="{ width: getReadingPercentage(selectedAttempt) + '%' }"></div>
+                                </div>
+                            </div>
                         </div>
-                        <div>
-                            <p class="text-xs text-gray-400 uppercase font-bold">Reading</p>
-                            <p class="font-bold">{{ selectedAttempt.stats_r || '0 / 0' }}</p>
-                        </div>
-                        <div class="col-span-2">
-                            <p class="text-xs text-gray-400 uppercase font-bold">Fecha</p>
-                            <p>{{ formatDate(selectedAttempt.completed_at) }}</p>
-                        </div>
+                    </div>
+
+                    <!-- Estado -->
+                    <div class="flex justify-between items-center pt-2">
+                        <span class="text-gray-500">Estado:</span>
+                        <span :class="['px-3 py-1 rounded-full text-[10px] font-black', statusClass(selectedAttempt.status)]">
+                            {{ translateStatus(selectedAttempt.status) }}
+                        </span>
                     </div>
                 </div>
                 <div class="border-t border-gray-100 px-6 py-4 flex justify-end gap-3">
                     <button @click="showModal = false" class="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all text-xs font-black uppercase">
                         Cerrar
                     </button>
-                    <button @click="exportarPdfIndividual(selectedAttempt.id)" class="px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-all text-xs font-black uppercase flex items-center gap-2">
+                    <button @click="exportarPdfIndividual(selectedAttempt?.id)" class="px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-all text-xs font-black uppercase flex items-center gap-2">
                         <i class="fas fa-file-pdf"></i> Descargar PDF
                     </button>
                 </div>
@@ -175,6 +231,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import axios from 'axios';
+import Swal from 'sweetalert2';
 
 const records = ref([]);
 const search = ref('');
@@ -183,98 +240,149 @@ const showModal = ref(false);
 const selectedAttempt = ref(null);
 const currentFilter = ref('all');
 
-// Función para obtener iniciales
 const getInitials = (name) => {
     if (!name) return '??';
     return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
 };
 
+const getTotalQuestions = (row) => {
+    if (!row.stats_l && !row.stats_r) return 0;
+    const lParts = (row.stats_l || '0/0').split('/');
+    const rParts = (row.stats_r || '0/0').split('/');
+    const lTotal = parseInt(lParts[1]) || 0;
+    const rTotal = parseInt(rParts[1]) || 0;
+    return lTotal + rTotal;
+};
+
+const getListeningPercentage = (row) => {
+    if (!row.stats_l) return 0;
+    const parts = row.stats_l.split('/');
+    const correct = parseInt(parts[0]) || 0;
+    const total = parseInt(parts[1]) || 0;
+    return total > 0 ? (correct / total) * 100 : 0;
+};
+
+const getReadingPercentage = (row) => {
+    if (!row.stats_r) return 0;
+    const parts = row.stats_r.split('/');
+    const correct = parseInt(parts[0]) || 0;
+    const total = parseInt(parts[1]) || 0;
+    return total > 0 ? (correct / total) * 100 : 0;
+};
+
 const fetchAttempts = async () => {
-  try {
-    loading.value = true;
-    const response = await axios.get('/api/v1/reports/exam-reports'); 
-    records.value = response.data;
-  } catch (error) {
-    console.error("Error al cargar reportes:", error);
-  } finally {
-    loading.value = false;
-  }
+    try {
+        loading.value = true;
+        // ✅ RUTA CORREGIDA
+        const response = await axios.get('/api/v1/reports/comp-reports');
+        records.value = response.data;
+    } catch (error) {
+        console.error("Error al cargar reportes:", error);
+        Swal.fire('Error', 'No se pudieron cargar los reportes', 'error');
+    } finally {
+        loading.value = false;
+    }
 };
 
 const filteredData = computed(() => {
-  let data = records.value;
-  if (search.value.trim()) {
-    const q = search.value.toLowerCase().trim();
-    data = data.filter(r => r.student_name.toLowerCase().includes(q) || r.quiz_title.toLowerCase().includes(q));
-  }
-  if (currentFilter.value === 'passed') data = data.filter(r => r.score >= 60);
-  if (currentFilter.value === 'failed') data = data.filter(r => r.score < 60);
-  return data;
+    let data = records.value;
+    if (search.value.trim()) {
+        const q = search.value.toLowerCase().trim();
+        data = data.filter(r => r.student_name?.toLowerCase().includes(q) || r.quiz_title?.toLowerCase().includes(q));
+    }
+    if (currentFilter.value === 'passed') data = data.filter(r => r.score >= 60);
+    if (currentFilter.value === 'failed') data = data.filter(r => r.score < 60);
+    return data;
 });
 
-const downloadPdfSecure = async (url) => {
-  try {
-    const response = await axios.get(url, { 
-      responseType: 'blob',
-      headers: { 'Accept': 'application/pdf' }
-    });
-
-    const blob = new Blob([response.data], { type: 'application/pdf' });
-    const fileURL = window.URL.createObjectURL(blob);
-    const reportWindow = window.open(fileURL, '_blank');
-    
-    if (!reportWindow) {
-      alert("El navegador bloqueó la ventana emergente. Por favor, permite los pop-ups para este sitio.");
+const exportarPdfIndividual = async (id) => {
+    try {
+        // ✅ RUTA CORREGIDA
+        const response = await axios.get(`/api/v1/reports/comp-reports/${id}/pdf`, {
+            responseType: 'blob'
+        });
+        
+        const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `Reporte_COMP_${id}.pdf`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        
+    } catch (error) {
+        console.error('Error:', error);
+        if (error.response?.status === 401) {
+            Swal.fire('Error', 'Tu sesión ha expirado. Por favor, inicia sesión nuevamente.', 'error').then(() => {
+                window.location.href = '/login';
+            });
+        } else {
+            Swal.fire('Error', 'No se pudo descargar el PDF', 'error');
+        }
     }
-
-    setTimeout(() => {
-      window.URL.revokeObjectURL(fileURL);
-    }, 10000);
-
-  } catch (error) {
-    console.error("Error detallado:", error);
-    alert("No se pudo generar el PDF. Revisa la consola para más detalles.");
-  }
 };
 
-const exportarPdf = (type) => {
-  const filter = type === 'all' ? currentFilter.value : type;
-  downloadPdfSecure(`/api/v1/reports/exam-reports/export-pdf?filter=${filter}`);
-};
-
-const exportarPdfIndividual = (id) => {
-  downloadPdfSecure(`/api/v1/reports/exam-reports/${id}/pdf`);
+const exportarPdf = async (type) => {
+    try {
+        const filter = type === 'all' ? currentFilter.value : type;
+        // ✅ RUTA CORREGIDA
+        const response = await axios.get(`/api/v1/reports/comp-reports/export-pdf?filter=${filter}`, {
+            responseType: 'blob'
+        });
+        
+        const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `Reporte_COMP_${filter}.pdf`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        
+    } catch (error) {
+        console.error('Error:', error);
+        if (error.response?.status === 401) {
+            Swal.fire('Error', 'Tu sesión ha expirado. Por favor, inicia sesión nuevamente.', 'error').then(() => {
+                window.location.href = '/login';
+            });
+        } else {
+            Swal.fire('Error', 'No se pudo descargar el PDF', 'error');
+        }
+    }
 };
 
 const verDetalle = (attempt) => {
-  selectedAttempt.value = attempt;
-  showModal.value = true;
+    selectedAttempt.value = attempt;
+    showModal.value = true;
 };
 
 const formatDate = (dateString) => {
-  if (!dateString) return 'N/A';
-  const date = new Date(dateString);
-  return date.toLocaleDateString('es-ES', { 
-    day: '2-digit', 
-    month: 'short', 
-    year: 'numeric', 
-    hour: '2-digit', 
-    minute: '2-digit' 
-  });
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-ES', { 
+        day: '2-digit', 
+        month: 'short', 
+        year: 'numeric', 
+        hour: '2-digit', 
+        minute: '2-digit' 
+    });
 };
 
 const statusClass = (status) => {
-  switch (status) {
-    case 'completed': return 'bg-green-100 text-green-700 border border-green-200';
-    case 'in_progress': return 'bg-amber-100 text-amber-700 border border-amber-200';
-    default: return 'bg-slate-100 text-slate-600';
-  }
+    switch (status) {
+        case 'completed': return 'bg-green-100 text-green-700 border border-green-200';
+        case 'in_progress': return 'bg-amber-100 text-amber-700 border border-amber-200';
+        default: return 'bg-slate-100 text-slate-600';
+    }
 };
 
 const translateStatus = (status) => {
-  const map = { 'completed': 'Finalizado', 'in_progress': 'En Curso', 'timed_out': 'Expirado' };
-  return map[status] || status;
+    const map = { 'completed': 'Finalizado', 'in_progress': 'En Curso', 'timed_out': 'Expirado' };
+    return map[status] || status;
 };
 
-onMounted(fetchAttempts);
+onMounted(() => {
+    fetchAttempts();
+});
 </script>

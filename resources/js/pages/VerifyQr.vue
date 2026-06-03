@@ -28,7 +28,6 @@
         <h1 class="text-white font-black uppercase tracking-tighter text-lg leading-tight">
           {{ data.header?.title || 'Documento Verificado' }}
         </h1>
-        <!-- ❌ ELIMINADO: Sello Digital Verificado -->
       </div>
 
       <!-- Cuerpo -->
@@ -36,11 +35,13 @@
         <!-- Tipo de documento -->
         <div class="flex justify-center mb-6">
           <span :class="['px-4 py-1.5 rounded-full text-[10px] font-black uppercase border tracking-widest shadow-sm', typeLabels[data.type]?.class || 'bg-gray-100']">
-            {{ typeLabels[data.type]?.text || typeLabels.GENERAL_REPORT?.text || 'Documento Oficial' }}
+            {{ typeLabels[data.type]?.text || 'Documento Oficial' }}
           </span>
         </div>
 
-        <!-- Si es REPORTE GENERAL MODULAR (nuevo) -->
+        <!-- ==================== REPORTES GENERALES ==================== -->
+        
+        <!-- REPORTE GENERAL MODULAR -->
         <div v-if="data.type === 'MODULAR_GENERAL_REPORT'">
           <div v-if="data.students_list && data.students_list.length > 0">
             <h3 class="text-sm font-black text-slate-800 uppercase mb-4 border-b border-slate-200 pb-2">
@@ -63,7 +64,30 @@
           </div>
         </div>
 
-        <!-- Si es REPORTE GRUPAL, mostrar lista de estudiantes -->
+        <!-- REPORTE GENERAL COMP (COMP_GENERAL_REPORT) -->
+        <div v-else-if="data.type === 'COMP_GENERAL_REPORT'">
+          <div v-if="data.students_list && data.students_list.length > 0">
+            <h3 class="text-sm font-black text-slate-800 uppercase mb-4 border-b border-slate-200 pb-2">
+              📋 Estudiantes ({{ data.students_list.length }})
+            </h3>
+            <div class="space-y-3 max-h-96 overflow-y-auto pr-1">
+              <div v-for="(student, idx) in data.students_list" :key="idx"
+                   class="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                <p class="font-black text-slate-800 text-sm">{{ student.full_name }}</p>
+                <p class="text-xs text-slate-500 mt-1">
+                  <span class="font-bold">Carnet:</span> {{ student.id_number || 'N/D' }} | 
+                  <span class="font-bold">Examen:</span> {{ student.quiz_title || 'N/A' }} |
+                  <span class="font-bold">Puntaje:</span> {{ student.score }}%
+                </p>
+              </div>
+            </div>
+          </div>
+          <div v-else class="text-center py-8">
+            <p class="text-slate-500">No hay estudiantes en este reporte</p>
+          </div>
+        </div>
+
+        <!-- REPORTE GRUPAL GLOBAL / ORAL -->
         <div v-else-if="data.type === 'GLOBAL_REPORT' || data.type === 'ORAL_ONLY_REPORT'">
           <div v-if="data.students_list && data.students_list.length > 0">
             <h3 class="text-sm font-black text-slate-800 uppercase mb-4 border-b border-slate-200 pb-2">
@@ -85,24 +109,33 @@
           </div>
         </div>
 
-        <!-- Si es EXAMEN ORAL INDIVIDUAL, mostrar datos del estudiante -->
-        <div v-else-if="data.type === 'ORAL_EXAM'" class="text-center mb-8">
-          <div class="mb-3 text-indigo-100">
-            <i class="fas fa-microphone-alt text-5xl text-indigo-300"></i>
-          </div>
-          
+        <!-- ==================== EXÁMENES INDIVIDUALES ==================== -->
+
+        <!-- COMP_EXAM (individual) -->
+        <div v-else-if="data.type === 'COMP_EXAM'" class="text-center mb-8">
           <h2 class="text-xl font-black text-slate-800 uppercase leading-tight tracking-tight">
             {{ data.student?.full_name }}
           </h2>
           <p class="text-indigo-600 text-[11px] font-bold uppercase tracking-widest mt-2 px-4 py-1 bg-indigo-50 rounded-lg inline-block">
             {{ data.student?.career }}
           </p>
-          
-          <!-- ❌ ELIMINADO: Carnet del estudiante individual -->
         </div>
 
-        <!-- Si es MODULAR_EXAM (individual) -->
+        <!-- MODULAR_EXAM (individual) -->
         <div v-else-if="data.type === 'MODULAR_EXAM'" class="text-center mb-8">
+          <h2 class="text-xl font-black text-slate-800 uppercase leading-tight tracking-tight">
+            {{ data.student?.full_name }}
+          </h2>
+          <p class="text-indigo-600 text-[11px] font-bold uppercase tracking-widest mt-2 px-4 py-1 bg-indigo-50 rounded-lg inline-block">
+            {{ data.student?.career }}
+          </p>
+        </div>
+
+        <!-- ORAL_EXAM (individual) -->
+        <div v-else-if="data.type === 'ORAL_EXAM'" class="text-center mb-8">
+          <div class="mb-3 text-indigo-100">
+            <i class="fas fa-microphone-alt text-5xl text-indigo-300"></i>
+          </div>
           <h2 class="text-xl font-black text-slate-800 uppercase leading-tight tracking-tight">
             {{ data.student?.full_name }}
           </h2>
@@ -158,21 +191,27 @@ const colorClasses = {
 };
 
 const typeLabels = {
+  // Exámenes individuales
+  'COMP_EXAM': { 
+    text: 'Examen de Competencia Computarizado', 
+    class: 'bg-blue-50 text-blue-700 border-blue-200' 
+  },
   'MODULAR_EXAM': { 
     text: 'Examen Modular', 
     class: 'bg-blue-50 text-blue-700 border-blue-200' 
-  },
-  'MODULAR_GENERAL_REPORT': { 
-    text: 'Reporte Consolidado Modular', 
-    class: 'bg-indigo-50 text-indigo-700 border-indigo-200' 
   },
   'ORAL_EXAM': { 
     text: 'Evaluación de Suficiencia Oral', 
     class: 'bg-emerald-50 text-emerald-700 border-emerald-200' 
   },
-  'COMP_EXAM': { 
-    text: 'Examen de Competencia Computarizado', 
-    class: 'bg-blue-50 text-blue-700 border-blue-200' 
+  // Reportes generales
+  'COMP_GENERAL_REPORT': { 
+    text: 'Reporte Consolidado Computarizado', 
+    class: 'bg-indigo-50 text-indigo-700 border-indigo-200' 
+  },
+  'MODULAR_GENERAL_REPORT': { 
+    text: 'Reporte Consolidado Modular', 
+    class: 'bg-indigo-50 text-indigo-700 border-indigo-200' 
   },
   'GLOBAL_REPORT': { 
     text: 'Consolidado Histórico Grupal', 

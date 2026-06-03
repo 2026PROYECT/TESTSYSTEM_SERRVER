@@ -430,19 +430,21 @@ Route::prefix('v1')->group(function () {
             });
         });
 
-        // ============================================================
-        // REPORTES
-        // ============================================================
-        Route::prefix('reports')->middleware(['admin'])->group(function () {
-            Route::get('/student-reports', [StudentReportController::class, 'index']);
-            Route::get('/student-reports/{id}', [StudentReportController::class, 'show']);
-            Route::get('/general', [StudentReportController::class, 'exportGeneralReport']);
-            Route::get('/history/{student_id}', [StudentReportController::class, 'exportHistorialPdf']);
-            Route::get('/exam-reports', [ExamReportController::class, 'index']);
-            Route::get('/exam-reports/export-pdf', [ExamReportController::class, 'exportPdfGeneral']);
-            Route::get('/exam-reports/{id}', [ExamReportController::class, 'show']);
-            Route::get('/exam-reports/{id}/pdf', [ExamReportController::class, 'exportPdfIndividual']);
-        });
+// ============================================================
+// REPORTES
+// ============================================================
+Route::prefix('reports')->middleware(['admin'])->group(function () {
+    // Student Reports
+    Route::get('/student-reports', [StudentReportController::class, 'index']);
+    Route::get('/student-reports/{id}', [StudentReportController::class, 'show']);
+    Route::get('/general', [StudentReportController::class, 'exportGeneralReport']);
+    Route::get('/history/{student_id}', [StudentReportController::class, 'exportHistorialPdf']);
+    
+    // COMP Reports (Exámenes Computarizados)
+    Route::get('/comp-reports', [ExamReportController::class, 'indexComp']);
+    Route::get('/comp-reports/export-pdf', [ExamReportController::class, 'exportPdfGeneralComp']);
+    Route::get('/comp-reports/{id}/pdf', [ExamReportController::class, 'exportPdfIndividualComp']);
+});
 
         // ============================================================
         // ASIGNACIONES
