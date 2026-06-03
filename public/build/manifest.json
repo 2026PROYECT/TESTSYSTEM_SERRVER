@@ -1,0 +1,659 @@
+{
+  "_laravel-vue-pagination.es-CiWwuGtD.js": {
+    "file": "assets/laravel-vue-pagination.es-CiWwuGtD.js",
+    "name": "laravel-vue-pagination.es",
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "_question-B7Wi2xsL.js": {
+    "file": "assets/question-B7Wi2xsL.js",
+    "name": "question",
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "_quiz-DtC8yjg-.js": {
+    "file": "assets/quiz-DtC8yjg-.js",
+    "name": "quiz",
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/css/app.css": {
+    "file": "assets/app-CGAMvCTX.css",
+    "src": "resources/css/app.css",
+    "isEntry": true
+  },
+  "resources/js/app.js": {
+    "file": "assets/app-RsUZH77v.js",
+    "name": "app",
+    "src": "resources/js/app.js",
+    "isEntry": true,
+    "dynamicImports": [
+      "resources/js/pages/auth/Register.vue",
+      "resources/js/pages/auth/VerifyEmail.vue",
+      "resources/js/pages/VerifyQr.vue",
+      "resources/js/components/Profile/Profile.vue",
+      "resources/js/components/Admins/OralQuestions/OralQuestionsAdmin.vue",
+      "resources/js/components/Admins/Reports/Index.vue",
+      "resources/js/components/Admins/Reports/AdminOralResults.vue",
+      "resources/js/components/Admins/Reports/CompReportsIndex.vue",
+      "resources/js/components/Admins/Backup/BackupManager.vue",
+      "resources/js/components/Admins/Reports/AdminSecurityLogs.vue",
+      "resources/js/components/Admins/Reports/AuditLogs.vue",
+      "resources/js/components/Admins/Reports/SecurityReports.vue",
+      "resources/js/components/Admins/Dashboard.vue",
+      "resources/js/components/Teachers/Dashboard.vue",
+      "resources/js/components/Students/Dashboard.vue",
+      "resources/js/components/Admins/Students/Index.vue",
+      "resources/js/components/Admins/Students/Create.vue",
+      "resources/js/components/Admins/Students/Edit.vue",
+      "resources/js/components/Admins/Quizzes/Index.vue",
+      "resources/js/components/Admins/Quizzes/Create.vue",
+      "resources/js/components/Admins/Quizzes/Edit.vue",
+      "resources/js/components/Admins/Question/Index.vue",
+      "resources/js/components/Admins/Question/Create.vue",
+      "resources/js/components/Admins/Question/Edit.vue",
+      "resources/js/components/Admins/Assignments/Index.vue",
+      "resources/js/components/Admins/Assignments/Create.vue",
+      "resources/js/components/Admins/Assignments/Edit.vue",
+      "resources/js/components/Admins/Assignments/TimeSlotManager.vue",
+      "resources/js/components/Admins/Assignments/SpecialSlotManager.vue",
+      "resources/js/components/Admins/PendingUsers/Index.vue",
+      "resources/js/components/Admins/Users/AdminIndex.vue",
+      "resources/js/components/Admins/Users/AdminCreate.vue",
+      "resources/js/components/Admins/Users/AdminEdit.vue",
+      "resources/js/components/Admins/Assignments/AdminLabControl.vue",
+      "resources/js/pages/admin/QrManager.vue",
+      "resources/js/pages/admin/QrStatistics.vue",
+      "resources/js/components/Admins/Reports/AdminModularReports.vue",
+      "resources/js/components/Admins/Modules/ModulesIndex.vue",
+      "resources/js/components/Admins/Modules/ModuleForm.vue",
+      "resources/js/components/Admins/Modules/ModuleForm.vue",
+      "resources/js/components/Admins/Modules/ModuleQuestions.vue",
+      "resources/js/components/Admins/Modules/QuizModules.vue",
+      "resources/js/components/Teachers/EvaluateOral.vue",
+      "resources/js/components/Teachers/ShowResult.vue",
+      "resources/js/components/Teachers/ResultsIndex.vue",
+      "resources/js/components/Students/Results/OralHistoryList.vue",
+      "resources/js/components/Students/Results/OralResultDetail.vue",
+      "resources/js/components/Students/Attend/ExamResultDetail.vue",
+      "resources/js/components/Students/exams/StudentExam.vue",
+      "resources/js/components/Students/exams/ModularExam.vue",
+      "resources/js/components/Students/Attend/StudentMissedExams.vue",
+      "resources/js/components/Students/Results/ModularHistoryList.vue",
+      "resources/js/components/Students/Results/ModularResults.vue",
+      "resources/js/components/Students/Attend/Result.vue",
+      "resources/js/components/Students/Schedule/StudentSchedule.vue"
+    ],
+    "css": [
+      "assets/app-Cr4UZVgi.css"
+    ]
+  },
+  "resources/js/components/Admins/Assignments/AdminLabControl.vue": {
+    "file": "assets/AdminLabControl-BBmNdhdl.js",
+    "name": "AdminLabControl",
+    "src": "resources/js/components/Admins/Assignments/AdminLabControl.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Admins/Assignments/Create.vue": {
+    "file": "assets/Create-CVYkc39p.js",
+    "name": "Create",
+    "src": "resources/js/components/Admins/Assignments/Create.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/Create-DE1_6sep.css"
+    ]
+  },
+  "resources/js/components/Admins/Assignments/Edit.vue": {
+    "file": "assets/Edit-DL3X7OaZ.js",
+    "name": "Edit",
+    "src": "resources/js/components/Admins/Assignments/Edit.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Admins/Assignments/Index.vue": {
+    "file": "assets/Index-mjhBzps8.js",
+    "name": "Index",
+    "src": "resources/js/components/Admins/Assignments/Index.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js",
+      "_laravel-vue-pagination.es-CiWwuGtD.js"
+    ]
+  },
+  "resources/js/components/Admins/Assignments/SpecialSlotManager.vue": {
+    "file": "assets/SpecialSlotManager-ByH4W-cj.js",
+    "name": "SpecialSlotManager",
+    "src": "resources/js/components/Admins/Assignments/SpecialSlotManager.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Admins/Assignments/TimeSlotManager.vue": {
+    "file": "assets/TimeSlotManager-yU3QFosR.js",
+    "name": "TimeSlotManager",
+    "src": "resources/js/components/Admins/Assignments/TimeSlotManager.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Admins/Backup/BackupManager.vue": {
+    "file": "assets/BackupManager-Bbro-piH.js",
+    "name": "BackupManager",
+    "src": "resources/js/components/Admins/Backup/BackupManager.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Admins/Dashboard.vue": {
+    "file": "assets/Dashboard-CiMBGX9Q.js",
+    "name": "Dashboard",
+    "src": "resources/js/components/Admins/Dashboard.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/Dashboard-BsqHnSIk.css"
+    ]
+  },
+  "resources/js/components/Admins/Modules/ModuleForm.vue": {
+    "file": "assets/ModuleForm-DcfcjOxE.js",
+    "name": "ModuleForm",
+    "src": "resources/js/components/Admins/Modules/ModuleForm.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Admins/Modules/ModuleQuestions.vue": {
+    "file": "assets/ModuleQuestions-9ZBcpFv1.js",
+    "name": "ModuleQuestions",
+    "src": "resources/js/components/Admins/Modules/ModuleQuestions.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Admins/Modules/ModulesIndex.vue": {
+    "file": "assets/ModulesIndex-DQc4yfRF.js",
+    "name": "ModulesIndex",
+    "src": "resources/js/components/Admins/Modules/ModulesIndex.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js",
+      "_laravel-vue-pagination.es-CiWwuGtD.js"
+    ]
+  },
+  "resources/js/components/Admins/Modules/QuizModules.vue": {
+    "file": "assets/QuizModules-DFOxV_GF.js",
+    "name": "QuizModules",
+    "src": "resources/js/components/Admins/Modules/QuizModules.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Admins/OralQuestions/OralQuestionsAdmin.vue": {
+    "file": "assets/OralQuestionsAdmin-tOhl37x-.js",
+    "name": "OralQuestionsAdmin",
+    "src": "resources/js/components/Admins/OralQuestions/OralQuestionsAdmin.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/OralQuestionsAdmin-D3hsFDPY.css"
+    ]
+  },
+  "resources/js/components/Admins/PendingUsers/Index.vue": {
+    "file": "assets/Index-l1WnjbQu.js",
+    "name": "Index",
+    "src": "resources/js/components/Admins/PendingUsers/Index.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Admins/Question/Create.vue": {
+    "file": "assets/Create-CyO6ChfX.js",
+    "name": "Create",
+    "src": "resources/js/components/Admins/Question/Create.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js",
+      "_quiz-DtC8yjg-.js",
+      "_question-B7Wi2xsL.js"
+    ]
+  },
+  "resources/js/components/Admins/Question/Edit.vue": {
+    "file": "assets/Edit-DpL7-o7J.js",
+    "name": "Edit",
+    "src": "resources/js/components/Admins/Question/Edit.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js",
+      "_quiz-DtC8yjg-.js",
+      "_question-B7Wi2xsL.js"
+    ]
+  },
+  "resources/js/components/Admins/Question/Index.vue": {
+    "file": "assets/Index-DPqjqedJ.js",
+    "name": "Index",
+    "src": "resources/js/components/Admins/Question/Index.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js",
+      "_laravel-vue-pagination.es-CiWwuGtD.js",
+      "_question-B7Wi2xsL.js",
+      "_quiz-DtC8yjg-.js"
+    ]
+  },
+  "resources/js/components/Admins/Quizzes/Create.vue": {
+    "file": "assets/Create-Bf6PI8OF.js",
+    "name": "Create",
+    "src": "resources/js/components/Admins/Quizzes/Create.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js",
+      "_quiz-DtC8yjg-.js"
+    ],
+    "css": [
+      "assets/Create-CO6FCqA3.css"
+    ]
+  },
+  "resources/js/components/Admins/Quizzes/Edit.vue": {
+    "file": "assets/Edit-jNi3Rafj.js",
+    "name": "Edit",
+    "src": "resources/js/components/Admins/Quizzes/Edit.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/Edit-QK2Cxian.css"
+    ]
+  },
+  "resources/js/components/Admins/Quizzes/Index.vue": {
+    "file": "assets/Index-rw1kzRDx.js",
+    "name": "Index",
+    "src": "resources/js/components/Admins/Quizzes/Index.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js",
+      "_laravel-vue-pagination.es-CiWwuGtD.js",
+      "_quiz-DtC8yjg-.js"
+    ]
+  },
+  "resources/js/components/Admins/Reports/AdminModularReports.vue": {
+    "file": "assets/AdminModularReports-U7w0Fbwd.js",
+    "name": "AdminModularReports",
+    "src": "resources/js/components/Admins/Reports/AdminModularReports.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Admins/Reports/AdminOralResults.vue": {
+    "file": "assets/AdminOralResults-BZm3rzc6.js",
+    "name": "AdminOralResults",
+    "src": "resources/js/components/Admins/Reports/AdminOralResults.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Admins/Reports/AdminSecurityLogs.vue": {
+    "file": "assets/AdminSecurityLogs-P_L1z8sz.js",
+    "name": "AdminSecurityLogs",
+    "src": "resources/js/components/Admins/Reports/AdminSecurityLogs.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Admins/Reports/AuditLogs.vue": {
+    "file": "assets/AuditLogs-BVYzPDEu.js",
+    "name": "AuditLogs",
+    "src": "resources/js/components/Admins/Reports/AuditLogs.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Admins/Reports/CompReportsIndex.vue": {
+    "file": "assets/CompReportsIndex-DMoJVVrC.js",
+    "name": "CompReportsIndex",
+    "src": "resources/js/components/Admins/Reports/CompReportsIndex.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Admins/Reports/Index.vue": {
+    "file": "assets/Index-D4X9kPGc.js",
+    "name": "Index",
+    "src": "resources/js/components/Admins/Reports/Index.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/Index-BDy4g25G.css"
+    ]
+  },
+  "resources/js/components/Admins/Reports/SecurityReports.vue": {
+    "file": "assets/SecurityReports-BxrpQRoB.js",
+    "name": "SecurityReports",
+    "src": "resources/js/components/Admins/Reports/SecurityReports.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Admins/Students/Create.vue": {
+    "file": "assets/Create-z0PDqkYy.js",
+    "name": "Create",
+    "src": "resources/js/components/Admins/Students/Create.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/Create-tn0RQdqM.css"
+    ]
+  },
+  "resources/js/components/Admins/Students/Edit.vue": {
+    "file": "assets/Edit-BEyGCAW7.js",
+    "name": "Edit",
+    "src": "resources/js/components/Admins/Students/Edit.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/Create-tn0RQdqM.css"
+    ]
+  },
+  "resources/js/components/Admins/Students/Index.vue": {
+    "file": "assets/Index-_q0pvZOx.js",
+    "name": "Index",
+    "src": "resources/js/components/Admins/Students/Index.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js",
+      "_laravel-vue-pagination.es-CiWwuGtD.js"
+    ],
+    "css": [
+      "assets/Index-B9eGb1XN.css"
+    ]
+  },
+  "resources/js/components/Admins/Users/AdminCreate.vue": {
+    "file": "assets/AdminCreate-CJH8HVHW.js",
+    "name": "AdminCreate",
+    "src": "resources/js/components/Admins/Users/AdminCreate.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Admins/Users/AdminEdit.vue": {
+    "file": "assets/AdminEdit-BjEbmQ_n.js",
+    "name": "AdminEdit",
+    "src": "resources/js/components/Admins/Users/AdminEdit.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Admins/Users/AdminIndex.vue": {
+    "file": "assets/AdminIndex-CAXC9dc9.js",
+    "name": "AdminIndex",
+    "src": "resources/js/components/Admins/Users/AdminIndex.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/AdminIndex-BUlSFdbx.css"
+    ]
+  },
+  "resources/js/components/Profile/Profile.vue": {
+    "file": "assets/Profile-B4VQO4ZI.js",
+    "name": "Profile",
+    "src": "resources/js/components/Profile/Profile.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/Profile-DYI1sdtS.css"
+    ]
+  },
+  "resources/js/components/Students/Attend/ExamResultDetail.vue": {
+    "file": "assets/ExamResultDetail-BIST1QCb.js",
+    "name": "ExamResultDetail",
+    "src": "resources/js/components/Students/Attend/ExamResultDetail.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/ExamResultDetail-Df3y3NGl.css"
+    ]
+  },
+  "resources/js/components/Students/Attend/Result.vue": {
+    "file": "assets/Result-f0xBZ_BX.js",
+    "name": "Result",
+    "src": "resources/js/components/Students/Attend/Result.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Students/Attend/StudentMissedExams.vue": {
+    "file": "assets/StudentMissedExams-Cvt4Ltov.js",
+    "name": "StudentMissedExams",
+    "src": "resources/js/components/Students/Attend/StudentMissedExams.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Students/Dashboard.vue": {
+    "file": "assets/Dashboard-BKH2cETC.js",
+    "name": "Dashboard",
+    "src": "resources/js/components/Students/Dashboard.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Students/Results/ModularHistoryList.vue": {
+    "file": "assets/ModularHistoryList-BvDmtKLY.js",
+    "name": "ModularHistoryList",
+    "src": "resources/js/components/Students/Results/ModularHistoryList.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Students/Results/ModularResults.vue": {
+    "file": "assets/ModularResults-Nsf_f7uJ.js",
+    "name": "ModularResults",
+    "src": "resources/js/components/Students/Results/ModularResults.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Students/Results/OralHistoryList.vue": {
+    "file": "assets/OralHistoryList-DWu9zSpS.js",
+    "name": "OralHistoryList",
+    "src": "resources/js/components/Students/Results/OralHistoryList.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/OralHistoryList-BCokq569.css"
+    ]
+  },
+  "resources/js/components/Students/Results/OralResultDetail.vue": {
+    "file": "assets/OralResultDetail-BwOTjctz.js",
+    "name": "OralResultDetail",
+    "src": "resources/js/components/Students/Results/OralResultDetail.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/OralResultDetail-CIGRHwaB.css"
+    ]
+  },
+  "resources/js/components/Students/Schedule/StudentSchedule.vue": {
+    "file": "assets/StudentSchedule-CD-Ok2k7.js",
+    "name": "StudentSchedule",
+    "src": "resources/js/components/Students/Schedule/StudentSchedule.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Students/exams/ModularExam.vue": {
+    "file": "assets/ModularExam-CXKVz-F5.js",
+    "name": "ModularExam",
+    "src": "resources/js/components/Students/exams/ModularExam.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/ModularExam-Df3YmN8N.css"
+    ]
+  },
+  "resources/js/components/Students/exams/StudentExam.vue": {
+    "file": "assets/StudentExam-9xNp5UCg.js",
+    "name": "StudentExam",
+    "src": "resources/js/components/Students/exams/StudentExam.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/StudentExam-D4BelW4o.css"
+    ]
+  },
+  "resources/js/components/Teachers/Dashboard.vue": {
+    "file": "assets/Dashboard-CzTSrX9X.js",
+    "name": "Dashboard",
+    "src": "resources/js/components/Teachers/Dashboard.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/components/Teachers/EvaluateOral.vue": {
+    "file": "assets/EvaluateOral-QM5xFrWU.js",
+    "name": "EvaluateOral",
+    "src": "resources/js/components/Teachers/EvaluateOral.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/EvaluateOral-DA1MUrd9.css"
+    ]
+  },
+  "resources/js/components/Teachers/ResultsIndex.vue": {
+    "file": "assets/ResultsIndex-lyYgsUiM.js",
+    "name": "ResultsIndex",
+    "src": "resources/js/components/Teachers/ResultsIndex.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/ResultsIndex-CKwi8UcK.css"
+    ]
+  },
+  "resources/js/components/Teachers/ShowResult.vue": {
+    "file": "assets/ShowResult-CeyemEws.js",
+    "name": "ShowResult",
+    "src": "resources/js/components/Teachers/ShowResult.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/ShowResult-DQOZIOeO.css"
+    ]
+  },
+  "resources/js/pages/VerifyQr.vue": {
+    "file": "assets/VerifyQr-_4wennfn.js",
+    "name": "VerifyQr",
+    "src": "resources/js/pages/VerifyQr.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/VerifyQr-CJF0f7tF.css"
+    ]
+  },
+  "resources/js/pages/admin/QrManager.vue": {
+    "file": "assets/QrManager-Ds-MABp6.js",
+    "name": "QrManager",
+    "src": "resources/js/pages/admin/QrManager.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  },
+  "resources/js/pages/admin/QrStatistics.vue": {
+    "file": "assets/QrStatistics-B2Nq2BjF.js",
+    "name": "QrStatistics",
+    "src": "resources/js/pages/admin/QrStatistics.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/QrStatistics-BdFUHRir.css"
+    ]
+  },
+  "resources/js/pages/auth/Register.vue": {
+    "file": "assets/Register-CH6T8Ejb.js",
+    "name": "Register",
+    "src": "resources/js/pages/auth/Register.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ],
+    "css": [
+      "assets/Register-D6ELd9HY.css"
+    ]
+  },
+  "resources/js/pages/auth/VerifyEmail.vue": {
+    "file": "assets/VerifyEmail-C0BIZJ3C.js",
+    "name": "VerifyEmail",
+    "src": "resources/js/pages/auth/VerifyEmail.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.js"
+    ]
+  }
+}

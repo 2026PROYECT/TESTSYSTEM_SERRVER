@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+/* En la v4, puedes definir tus clases directamente */
+.btn {
+  @apply inline-flex items-center px-4 py-2 rounded font-medium transition-colors;
+}
+
+.btn-primary {
+  @apply bg-indigo-600 text-white hover:bg-indigo-700;
+}
+
+.btn-edit {
+  @apply bg-yellow-500 text-white hover:bg-yellow-600;
+}
+
+.btn-delete {
+  @apply bg-red-600 text-white hover:bg-red-700;
+}
+
+.btn-disabled {
+  @apply opacity-50 cursor-not-allowed;
+}

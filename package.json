@@ -1,0 +1,33 @@
+{
+    "private": true,
+    "type": "module",
+    "engines": {
+        "node": "18.x"
+    },
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build"
+    },
+    "devDependencies": {
+        "@tailwindcss/forms": "^0.5.10",
+        "@tailwindcss/vite": "^4.0.0",
+        "@vitejs/plugin-vue": "^5.2.1",
+        "axios": "^1.7.9",
+        "laravel-vite-plugin": "^1.1.1",
+        "vite": "^6.0.0"
+    },
+    "dependencies": {
+        "@heroicons/vue": "^2.2.0",
+        "@vuepic/vue-datepicker": "^12.1.0",
+        "canvas-confetti": "^1.9.4",
+        "cropperjs": "^2.1.1",
+        "laravel-vue-pagination": "^4.1.3",
+        "lodash": "^4.17.23",
+        "qrcode.vue": "^3.8.0",
+        "sweetalert2": "^11.15.0",
+        "vue": "^3.5.0",
+        "vue-router": "^4.5.0",
+        "vue-sweetalert2": "^5.0.11",
+        "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+    }
+}

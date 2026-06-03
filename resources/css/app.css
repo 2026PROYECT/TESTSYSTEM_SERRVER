@@ -1,0 +1,14 @@
+/* 1. Importa primero los estilos de terceros */
+@import "sweetalert2/dist/sweetalert2.min.css";
+
+/* 2. Importa Tailwind v4 (Esto ya incluye base, components y utilities) */
+@import "tailwindcss";
+
+@layer base {
+  html {
+    /* Esto hace que la fuente se vea mucho más delgada y definida */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+}

@@ -1,0 +1,39 @@
+# Laravel
+/vendor
+/node_modules
+
+# Ignorar solo lo innecesario dentro de storage
+/storage/*.key
+/storage/framework/
+/storage/debugbar/
+/storage/logs/
+/storage/backups/
+/storage/app/temp/
+/storage/app/exports/
+/storage/app/imports/
+
+# ✅ Incluir todo lo público dentro de storage
+!/storage/app/public/
+!/storage/app/public/**
+
+# Archivos de entorno
+.env
+.env.*
+.phpunit.result.cache
+
+# Vercel / deployment
+.vercel
+.vercelignore
+
+# IDE / sistema
+*.log
+*.cache
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
+
+# NPM / Yarn
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
