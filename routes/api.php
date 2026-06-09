@@ -37,6 +37,7 @@ use App\Http\Controllers\Api\V1\BackupController;
 use App\Http\Controllers\Api\V1\ModuleController;
 use App\Http\Controllers\Api\V1\QuizModuleController;
 use App\Http\Controllers\Api\V1\ModularExamController;
+use App\Http\Controllers\Api\V1\ModularExamPdfController; // ← PDF Controller
 use App\Http\Controllers\Api\V1\ModuleMaintenanceController;
 use App\Models\Setting;
 
@@ -137,87 +138,93 @@ Route::prefix('v1')->group(function () {
             Route::post('/update-password', [UserController::class, 'updatePassword']);
         });
 
-        // ============================================================
-        // PORTAL STUDENT
-        // ============================================================
-        Route::prefix('student')->group(function () {
-            
-            // Notificaciones
-            Route::get('/notifications', function () {
-                return auth()->user()->notifications()->latest()->take(50)->get();
-            });
-            Route::post('/notifications/{id}/read', function ($id) {
-                $notification = auth()->user()->notifications()->find($id);
-                if ($notification) $notification->markAsRead();
-                return response()->json(['success' => true]);
-            });
-            Route::post('/notifications/read-all', function () {
-                auth()->user()->unreadNotifications->markAsRead();
-                return response()->json(['success' => true]);
-            });
-            Route::delete('/notifications/{id}', function ($id) {
-                $notification = auth()->user()->notifications()->find($id);
-                if ($notification) {
-                    $notification->delete();
-                    return response()->json(['success' => true]);
-                }
-                return response()->json(['error' => 'Notificación no encontrada'], 404);
-            });
-            Route::delete('/notifications/read', function () {
-                auth()->user()->notifications()->whereNotNull('read_at')->delete();
-                return response()->json(['success' => true]);
-            });
-            
-            // Módulos
-            Route::get('/modules', [ModuleController::class, 'index']);
-            Route::get('/modules/{id}', [ModuleController::class, 'show']);
-            
-            // ========== EXÁMENES MODULARES ==========
-            Route::prefix('modular-exam')->group(function () {
-                Route::get('/check-availability/{languageId}', [ModularExamController::class, 'checkAvailability']);
-                Route::post('/create-random', [ModularExamController::class, 'createRandomModularExam']);
-                Route::get('/load/{assignmentId}', [ModularExamController::class, 'loadExam']);
-                Route::post('/save/{attemptId}', [ModularExamController::class, 'saveModuleAnswers']);
-                Route::post('/next/{attemptId}', [ModularExamController::class, 'nextModule']);
-                Route::post('/finish/{attemptId}', [ModularExamController::class, 'finishExam']);
-                Route::get('/security-status/{attemptId}', [ModularExamController::class, 'getSecurityStatus']);
-                Route::post('/security-event', [ModularExamController::class, 'securityEvent']);
-            });
-            
-            // Resultados modulares
-            Route::get('/modular-results/{attemptId}', [ModularExamController::class, 'getResults']);
-            Route::get('/modular-history', [ModularExamController::class, 'getModularHistory']);
-            Route::get('/modular-results/{attemptId}/download', [ModularExamController::class, 'downloadResultsPDF']);
-            
-            // ========== SEGURIDAD ==========
-            Route::post('/log-security-event', [SecurityLogController::class, 'store']);
-            Route::get('/my-violations', [SecurityLogController::class, 'myViolations']);
-           
-            // ========== EXÁMENES COMPTEST ==========
-            Route::post('start-exam', [StudentQuizController::class, 'startRandomExam']);
-            Route::get('load-exam/{id}', [StudentQuizController::class, 'loadExam']);
-            Route::post('save-answer/{attemptId}', [StudentQuizController::class, 'saveAnswer']);
-            Route::post('finish-exam/{id}', [StudentQuizController::class, 'finishExam']);
-            Route::get('/check-status', [StudentQuizController::class, 'checkStatus']);
-            Route::get('/results-history', [QuestionResultController::class, 'getAllResults']);
-            Route::get('/results/{id}', [QuestionResultController::class, 'getResults']);
-            
-            // Exámenes orales
-            Route::get('/oral-history', [OralTestController::class, 'getOralHistory']);
-            Route::get('/oral-results/{id}', [OralTestController::class, 'show']);
-            Route::get('/oral-results/{id}/download', [OralTestController::class, 'downloadCertificate']);
-            Route::get('/missed-exams', [StudentQuizController::class, 'getMissedExams']);
-            
-            // Citas y programación
-            Route::get('active-assignment', [ExamScheduleController::class, 'getActiveAssignment']);
-            Route::get('my-exams', [ExamScheduleController::class, 'index']);
-            Route::get('check-eligibility', [ExamScheduleController::class, 'checkEligibility']);
-            Route::post('schedule', [ExamScheduleController::class, 'store']);
-            Route::get('available-slots', [ExamScheduleController::class, 'getAvailableSlots']);
-             Route::get('/check-sancion', [ExamScheduleController::class, 'checkSancion']);
-            Route::get('last-missed-exam', [StudentQuizController::class, 'getLastMissedExam']);
-            Route::get('/my-violations', [SecurityLogController::class, 'myViolations']);
-        });
+// ============================================================
+// PORTAL STUDENT
+// ============================================================
+Route::prefix('student')->group(function () {
+    
+    // Notificaciones
+    Route::get('/notifications', function () {
+        return auth()->user()->notifications()->latest()->take(50)->get();
+    });
+    Route::post('/notifications/{id}/read', function ($id) {
+        $notification = auth()->user()->notifications()->find($id);
+        if ($notification) $notification->markAsRead();
+        return response()->json(['success' => true]);
+    });
+    Route::post('/notifications/read-all', function () {
+        auth()->user()->unreadNotifications->markAsRead();
+        return response()->json(['success' => true]);
+    });
+    Route::delete('/notifications/{id}', function ($id) {
+        $notification = auth()->user()->notifications()->find($id);
+        if ($notification) {
+            $notification->delete();
+            return response()->json(['success' => true]);
+        }
+        return response()->json(['error' => 'Notificación no encontrada'], 404);
+    });
+    Route::delete('/notifications/read', function () {
+        auth()->user()->notifications()->whereNotNull('read_at')->delete();
+        return response()->json(['success' => true]);
+    });
+    
+    // Módulos
+    Route::get('/modules', [ModuleController::class, 'index']);
+    Route::get('/modules/{id}', [ModuleController::class, 'show']);
+    
+    // ========== EXÁMENES MODULARES ==========
+    Route::prefix('modular-exam')->group(function () {
+        Route::get('/check-availability/{languageId}', [ModularExamController::class, 'checkAvailability']);
+        Route::post('/create-random', [ModularExamController::class, 'createRandomModularExam']);
+        Route::get('/load/{assignmentId}', [ModularExamController::class, 'loadExam']);
+        Route::post('/save/{attemptId}', [ModularExamController::class, 'saveModuleAnswers']);
+        Route::post('/next/{attemptId}', [ModularExamController::class, 'nextModule']);
+        Route::post('/finish/{attemptId}', [ModularExamController::class, 'finishExam']);
+        Route::post('/invalidate/{attemptId}', [ModularExamController::class, 'invalidateExam']);
+        Route::post('/security-event', [ModularExamController::class, 'securityEvent']);
+        
+        // ✅ NUEVAS RUTAS para sincronización y control de medios
+        Route::post('/sync-timer/{attemptId}', [ModularExamController::class, 'syncTimer']);
+        Route::post('/audio-played/{attemptId}', [ModularExamController::class, 'registerAudioPlayed']);
+        Route::post('/media-viewed/{attemptId}', [ModularExamController::class, 'registerMediaViewed']);
+    });
+    
+    // Resultados modulares (JSON)
+    Route::get('/modular-results/{attemptId}', [ModularExamController::class, 'getResults']);
+    Route::get('/modular-history', [ModularExamController::class, 'getModularHistory']);
+    
+    // PDF de resultados (Estudiante)
+    Route::get('/modular-results/{attemptId}/download', [ModularExamPdfController::class, 'downloadResultsPDF']);
+    
+    // ========== SEGURIDAD ==========
+    Route::post('/log-security-event', [SecurityLogController::class, 'store']);
+    Route::get('/my-violations', [SecurityLogController::class, 'myViolations']);
+   
+    // ========== EXÁMENES COMPTEST ==========
+    Route::post('start-exam', [StudentQuizController::class, 'startRandomExam']);
+    Route::get('load-exam/{id}', [StudentQuizController::class, 'loadExam']);
+    Route::post('save-answer/{attemptId}', [StudentQuizController::class, 'saveAnswer']);
+    Route::post('finish-exam/{id}', [StudentQuizController::class, 'finishExam']);
+    Route::get('/check-status', [StudentQuizController::class, 'checkStatus']);
+    Route::get('/results-history', [QuestionResultController::class, 'getAllResults']);
+    Route::get('/results/{id}', [QuestionResultController::class, 'getResults']);
+    
+    // Exámenes orales
+    Route::get('/oral-history', [OralTestController::class, 'getOralHistory']);
+    Route::get('/oral-results/{id}', [OralTestController::class, 'show']);
+    Route::get('/oral-results/{id}/download', [OralTestController::class, 'downloadCertificate']);
+    Route::get('/missed-exams', [StudentQuizController::class, 'getMissedExams']);
+    
+    // Citas y programación
+    Route::get('active-assignment', [ExamScheduleController::class, 'getActiveAssignment']);
+    Route::get('my-exams', [ExamScheduleController::class, 'index']);
+    Route::get('check-eligibility', [ExamScheduleController::class, 'checkEligibility']);
+    Route::post('schedule', [ExamScheduleController::class, 'store']);
+    Route::get('available-slots', [ExamScheduleController::class, 'getAvailableSlots']);
+    Route::get('/check-sancion', [ExamScheduleController::class, 'checkSancion']);
+    Route::get('last-missed-exam', [StudentQuizController::class, 'getLastMissedExam']);
+});
 
         // ============================================================
         // PORTAL TEACHER
@@ -309,9 +316,11 @@ Route::prefix('v1')->group(function () {
 
             // ========== REPORTES MODULARES ==========
             Route::prefix('modular-reports')->group(function () {
-                Route::get('/', [ModularExamController::class, 'index']);
-                Route::get('/export-pdf', [ModularExamController::class, 'exportPdfGeneral']);
-                Route::get('/{id}/pdf', [ModularExamController::class, 'exportPdfIndividual']);
+                // Lista de exámenes (JSON)
+                Route::get('/', [ModularExamController::class, 'adminIndex']);
+                // PDFs
+                Route::get('/export-pdf', [ModularExamPdfController::class, 'exportPdfGeneral']);
+                Route::get('/{id}/pdf', [ModularExamPdfController::class, 'exportPdfIndividual']);
             });
 
             // ========== LOGS DE SEGURIDAD (ADMIN) ==========
@@ -430,21 +439,21 @@ Route::prefix('v1')->group(function () {
             });
         });
 
-// ============================================================
-// REPORTES
-// ============================================================
-Route::prefix('reports')->middleware(['admin'])->group(function () {
-    // Student Reports
-    Route::get('/student-reports', [StudentReportController::class, 'index']);
-    Route::get('/student-reports/{id}', [StudentReportController::class, 'show']);
-    Route::get('/general', [StudentReportController::class, 'exportGeneralReport']);
-    Route::get('/history/{student_id}', [StudentReportController::class, 'exportHistorialPdf']);
-    
-    // COMP Reports (Exámenes Computarizados)
-    Route::get('/comp-reports', [ExamReportController::class, 'indexComp']);
-    Route::get('/comp-reports/export-pdf', [ExamReportController::class, 'exportPdfGeneralComp']);
-    Route::get('/comp-reports/{id}/pdf', [ExamReportController::class, 'exportPdfIndividualComp']);
-});
+        // ============================================================
+        // REPORTES
+        // ============================================================
+        Route::prefix('reports')->middleware(['admin'])->group(function () {
+            // Student Reports
+            Route::get('/student-reports', [StudentReportController::class, 'index']);
+            Route::get('/student-reports/{id}', [StudentReportController::class, 'show']);
+            Route::get('/general', [StudentReportController::class, 'exportGeneralReport']);
+            Route::get('/history/{student_id}', [StudentReportController::class, 'exportHistorialPdf']);
+            
+            // COMP Reports (Exámenes Computarizados)
+            Route::get('/comp-reports', [ExamReportController::class, 'indexComp']);
+            Route::get('/comp-reports/export-pdf', [ExamReportController::class, 'exportPdfGeneralComp']);
+            Route::get('/comp-reports/{id}/pdf', [ExamReportController::class, 'exportPdfIndividualComp']);
+        });
 
         // ============================================================
         // ASIGNACIONES

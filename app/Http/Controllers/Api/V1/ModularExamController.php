@@ -4,8 +4,6 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\QuizAssignment;
-use App\Models\Quiz;
-use App\Models\Module;
 use App\Models\QuizAssignmentModule;
 use App\Models\ModularExamAttempt;
 use App\Models\ModularAnswer;
@@ -15,18 +13,17 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
-use Barryvdh\DomPDF\Facade\Pdf;
-use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class ModularExamController extends Controller
 {
+    const DEFAULT_MODULE_DURATION = 300; // 5 minutos por defecto si no tiene duration_seconds
+
     /**
      * ============================================================
      * VERIFICACIÓN DE DISPONIBILIDAD (PÚBLICO)
      * GET /api/v1/student/modular-exam/check-availability/{languageId}
      * ============================================================
      */
-    const TOTAL_TIME = 40; // 40 minutos para el examen modular
     public function checkAvailability($languageId)
     {
         try {
@@ -48,14 +45,12 @@ class ModularExamController extends Controller
             $missingModules = [];
             
             foreach ($modulesNeeded as $need) {
-                // Buscar módulos con case-insensitive
                 $count = DB::table('modules')
                     ->where('language_id', $languageId)
                     ->where('level', $need['level'])
                     ->whereRaw('LOWER(TRIM(type)) = ?', [$need['type']])
                     ->count();
                 
-                // Verificar que tengan preguntas
                 $hasQuestions = false;
                 if ($count > 0) {
                     $hasQuestions = DB::table('modules')
@@ -83,8 +78,6 @@ class ModularExamController extends Controller
                 }
             }
             
-            Log::info("Verificación completada. Todo disponible: " . ($allAvailable ? 'SÍ' : 'NO'));
-            
             return response()->json([
                 'success' => true,
                 'language_id' => (int)$languageId,
@@ -107,7 +100,6 @@ class ModularExamController extends Controller
             ], 500);
         }
     }
-
 
     /**
      * ============================================================
@@ -154,7 +146,6 @@ class ModularExamController extends Controller
         ];
     }
 
-
     /**
      * ============================================================
      * CREAR EXAMEN MODULAR (CON VERIFICACIÓN)
@@ -169,7 +160,6 @@ class ModularExamController extends Controller
             
             Log::info("Creando examen modular para usuario: {$user->id}, language_id: {$languageId}");
             
-            // ✅ VERIFICAR DISPONIBILIDAD ANTES DE CREAR
             $availabilityCheck = $this->checkModuleAvailability($languageId);
             
             if (!$availabilityCheck['available']) {
@@ -184,7 +174,6 @@ class ModularExamController extends Controller
                 ], 400);
             }
             
-            // Verificar si ya existe un examen activo
             $existingAssignment = QuizAssignment::where('student_id', $user->id)
                 ->where('test_type', 'ModularTest')
                 ->where('active', 1)
@@ -200,7 +189,6 @@ class ModularExamController extends Controller
                 ]);
             }
             
-            // Crear nuevo assignment
             $assignment = QuizAssignment::create([
                 'student_id' => $user->id,
                 'language_id' => $languageId,
@@ -229,10 +217,124 @@ class ModularExamController extends Controller
         }
     }
 
+    /**
+     * ============================================================
+     * CARGAR MÓDULOS DEL EXAMEN (MÉTODO PRIVADO)
+     * ============================================================
+     */
+    private function loadExamModules($languageId, &$totalDurationSeconds)
+    {
+        $modulesOrder = [
+            ['level' => 'A1', 'type' => 'listening'],
+            ['level' => 'A1', 'type' => 'reading'],
+            ['level' => 'A2', 'type' => 'listening'],
+            ['level' => 'A2', 'type' => 'reading'],
+            ['level' => 'B1', 'type' => 'listening'],
+            ['level' => 'B1', 'type' => 'reading'],
+            ['level' => 'B2', 'type' => 'listening'],
+            ['level' => 'B2', 'type' => 'reading'],
+        ];
+        
+        $modulesData = [];
+        $usedModuleIds = [];
+        $missingModules = [];
+        $totalDurationSeconds = 0;
+        
+        foreach ($modulesOrder as $index => $order) {
+            Log::info("Buscando módulo: level={$order['level']}, type={$order['type']}");
+            
+            $module = DB::table('modules')
+                ->where('language_id', $languageId)
+                ->where('level', $order['level'])
+                ->whereRaw('LOWER(TRIM(type)) = ?', [$order['type']])
+                ->whereNotIn('id', $usedModuleIds)
+                ->inRandomOrder()
+                ->first();
+            
+            if (!$module) {
+                Log::warning("No se encontró módulo específico para: {$order['level']} - {$order['type']}, buscando alternativo");
+                
+                $module = DB::table('modules')
+                    ->where('language_id', $languageId)
+                    ->where('level', $order['level'])
+                    ->whereNotIn('id', $usedModuleIds)
+                    ->inRandomOrder()
+                    ->first();
+                
+                if ($module) {
+                    Log::info("Usando módulo alternativo: ID={$module->id}, type={$module->type} para requerido {$order['type']}");
+                }
+            }
+            
+            if ($module) {
+                $usedModuleIds[] = $module->id;
+                
+                // Obtener duración del módulo (priorizar duration_seconds, si no usar valor por defecto)
+                $moduleDuration = $module->duration_seconds ?? self::DEFAULT_MODULE_DURATION;
+                $totalDurationSeconds += $moduleDuration;
+                
+                Log::info("Módulo encontrado: ID={$module->id}, duración={$moduleDuration}s, total acumulado={$totalDurationSeconds}s");
+                
+                $questions = DB::table('module_questions')
+                    ->where('module_id', $module->id)
+                    ->orderBy('order_position', 'asc')
+                    ->get();
+                
+                $questionsData = [];
+                foreach ($questions as $question) {
+                    $questionsData[] = [
+                        'id' => $question->id,
+                        'text' => $question->question_text,
+                        'options' => [
+                            'A' => $question->option_a,
+                            'B' => $question->option_b,
+                            'C' => $question->option_c,
+                            'D' => $question->option_d,
+                        ],
+                        'points' => $question->points ?? 1
+                    ];
+                }
+                
+                $modulesData[] = [
+                    'id' => $module->id,
+                    'title' => $module->title,
+                    'level' => $module->level,
+                    'type' => $module->type,
+                    'content' => $module->content,
+                    'duration_seconds' => $moduleDuration,
+                    'audio' => $module->audio ? '/storage/' . ltrim($module->audio, '/') : null,
+                    'picture' => $module->picture ? '/storage/' . ltrim($module->picture, '/') : null,
+                    'questions' => $questionsData,
+                    'order' => $index
+                ];
+            } else {
+                $missingModules[] = "{$order['level']} - {$order['type']}";
+                Log::error("Módulo NO encontrado para: {$order['level']} - {$order['type']}");
+            }
+        }
+        
+        if (count($modulesData) < 8) {
+            Log::error("SOLO " . count($modulesData) . " DE 8 MÓDULOS CARGADOS. Faltan: " . implode(', ', $missingModules));
+            return [
+                'success' => false,
+                'error' => 'No hay suficientes módulos para completar el examen',
+                'modules_loaded' => count($modulesData),
+                'modules_needed' => 8,
+                'missing_modules' => $missingModules,
+                'message' => 'Contacta al administrador: faltan módulos ' . implode(', ', $missingModules)
+            ];
+        }
+        
+        return [
+            'success' => true,
+            'modules' => $modulesData,
+            'total_duration' => $totalDurationSeconds
+        ];
+    }
 
     /**
      * ============================================================
-     * CARGAR EXAMEN MODULAR (SELECCIONA 8 MÓDULOS)
+     * CARGAR EXAMEN MODULAR
      * GET /api/v1/student/modular-exam/load/{assignmentId}
      * ============================================================
      */
@@ -251,110 +353,19 @@ class ModularExamController extends Controller
                 return response()->json(['error' => 'Examen no encontrado'], 404);
             }
             
-            // Orden de módulos requeridos (8 módulos)
-            $modulesOrder = [
-                ['level' => 'A1', 'type' => 'listening'],
-                ['level' => 'A1', 'type' => 'reading'],
-                ['level' => 'A2', 'type' => 'listening'],
-                ['level' => 'A2', 'type' => 'reading'],
-                ['level' => 'B1', 'type' => 'listening'],
-                ['level' => 'B1', 'type' => 'reading'],
-                ['level' => 'B2', 'type' => 'listening'],
-                ['level' => 'B2', 'type' => 'reading'],
-            ];
+            // Cargar módulos y calcular duración total
+            $modulesResult = $this->loadExamModules($assignment->language_id, $totalDuration);
             
-            $modulesData = [];
-            $usedModuleIds = [];
-            $missingModules = [];
-            
-            foreach ($modulesOrder as $index => $order) {
-                Log::info("Buscando módulo: level={$order['level']}, type={$order['type']}");
-                
-                // Búsqueda principal (case-insensitive)
-                $module = DB::table('modules')
-                    ->where('language_id', $assignment->language_id)
-                    ->where('level', $order['level'])
-                    ->whereRaw('LOWER(TRIM(type)) = ?', [$order['type']])
-                    ->whereNotIn('id', $usedModuleIds)
-                    ->inRandomOrder()
-                    ->first();
-                
-                // Si no encuentra, buscar cualquier módulo del nivel
-                if (!$module) {
-                    Log::warning("No se encontró módulo específico para: {$order['level']} - {$order['type']}, buscando alternativo");
-                    
-                    $module = DB::table('modules')
-                        ->where('language_id', $assignment->language_id)
-                        ->where('level', $order['level'])
-                        ->whereNotIn('id', $usedModuleIds)
-                        ->inRandomOrder()
-                        ->first();
-                    
-                    if ($module) {
-                        Log::info("Usando módulo alternativo: ID={$module->id}, type={$module->type} para requerido {$order['type']}");
-                    }
-                }
-                
-                if ($module) {
-                    $usedModuleIds[] = $module->id;
-                    
-                    // Cargar preguntas del módulo
-                    $questions = DB::table('module_questions')
-                        ->where('module_id', $module->id)
-                        ->orderBy('order_position', 'asc')
-                        ->get();
-                    
-                    Log::info("Módulo encontrado: ID={$module->id}, preguntas=" . $questions->count());
-                    
-                    $questionsData = [];
-                    foreach ($questions as $question) {
-                        $questionsData[] = [
-                            'id' => $question->id,
-                            'text' => $question->question_text,
-                            'options' => [
-                                'A' => $question->option_a,
-                                'B' => $question->option_b,
-                                'C' => $question->option_c,
-                                'D' => $question->option_d,
-                            ],
-                            'points' => $question->points ?? 1
-                        ];
-                    }
-                    
-                    $modulesData[] = [
-                        'id' => $module->id,
-                        'title' => $module->title,
-                        'level' => $module->level,
-                        'type' => $module->type,
-                        'content' => $module->content,
-                        'audio' => $module->audio ? '/storage/' . ltrim($module->audio, '/') : null,
-                        'picture' => $module->picture ? '/storage/' . ltrim($module->picture, '/') : null,
-                        'questions' => $questionsData,
-                        'order' => $index
-                    ];
-                } else {
-                    $missingModules[] = "{$order['level']} - {$order['type']}";
-                    Log::error("Módulo NO encontrado para: {$order['level']} - {$order['type']}");
-                }
+            if (!$modulesResult['success']) {
+                return response()->json($modulesResult, 400);
             }
             
-            // ✅ VERIFICAR QUE SE CARGARON LOS 8 MÓDULOS
-            if (count($modulesData) < 8) {
-                Log::error("SOLO " . count($modulesData) . " DE 8 MÓDULOS CARGADOS. Faltan: " . implode(', ', $missingModules));
-                
-                return response()->json([
-                    'success' => false,
-                    'error' => 'No hay suficientes módulos para completar el examen',
-                    'modules_loaded' => count($modulesData),
-                    'modules_needed' => 8,
-                    'missing_modules' => $missingModules,
-                    'message' => 'Contacta al administrador: faltan módulos ' . implode(', ', $missingModules)
-                ], 400);
-            }
+            $modulesData = $modulesResult['modules'];
+            $totalDurationSeconds = $modulesResult['total_duration'];
             
-            Log::info("✅ 8 módulos cargados exitosamente");
+            Log::info("✅ 8 módulos cargados exitosamente. Duración total: {$totalDurationSeconds} segundos (" . round($totalDurationSeconds / 60) . " minutos)");
             
-            // Crear o recuperar intento (attempt)
+            // Buscar o crear attempt
             $attempt = DB::table('modular_exam_attempts')
                 ->where('assignment_id', $assignmentId)
                 ->where('student_id', auth()->id())
@@ -367,7 +378,10 @@ class ModularExamController extends Controller
                     'current_module_index' => 0,
                     'status' => 'in_progress',
                     'started_at' => now(),
-                    'expires_at' => now()->addMinutes(self::TOTAL_TIME),
+                    'expires_at' => now()->addSeconds($totalDurationSeconds),
+                    'time_left' => $totalDurationSeconds,
+                    'played_audios' => json_encode([]),
+                    'viewed_media' => json_encode([]),
                     'answers' => json_encode([]),
                     'total_score' => 0,
                     'total_percentage' => 0,
@@ -379,13 +393,19 @@ class ModularExamController extends Controller
                     ->where('id', $attemptId)
                     ->first();
                     
-                Log::info("Nuevo attempt creado: {$attempt->id}");
+                Log::info("Nuevo attempt creado: {$attempt->id}, duración total: {$totalDurationSeconds}s");
             } else {
                 Log::info("Attempt existente: {$attempt->id}, módulo actual: {$attempt->current_module_index}");
             }
             
-            $timeLeft = max(0, Carbon::parse($attempt->expires_at)->diffInSeconds(now(), false));
+            // Calcular tiempo restante (priorizar time_left guardado)
+            $timeLeft = $attempt->time_left > 0 
+                ? $attempt->time_left 
+                : max(0, Carbon::parse($attempt->expires_at)->diffInSeconds(now(), false));
+            
             $savedAnswers = json_decode($attempt->answers ?? '[]', true);
+            $playedAudios = json_decode($attempt->played_audios ?? '[]', true);
+            $viewedMedia = json_decode($attempt->viewed_media ?? '[]', true);
             
             return response()->json([
                 'success' => true,
@@ -393,8 +413,11 @@ class ModularExamController extends Controller
                 'current_module' => $attempt->current_module_index,
                 'modules' => $modulesData,
                 'total_modules' => count($modulesData),
+                'total_duration_seconds' => $totalDurationSeconds,
                 'time_left' => $timeLeft,
                 'saved_answers' => $savedAnswers,
+                'played_audios' => $playedAudios,
+                'viewed_media' => $viewedMedia,
                 'status' => $attempt->status
             ]);
             
@@ -405,27 +428,160 @@ class ModularExamController extends Controller
         }
     }
 
-public function securityEvent(Request $request)
-{
-    try {
-        DB::table('security_logs')->insert([
-            'user_id' => auth()->id(),
-            'exam_attempt_id' => $request->exam_attempt_id ?? null, // 🔥 Permitir null
-            'event_type' => $request->event_type,
-            'details' => $request->details,
-            'ip_address' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-            'created_at' => now(),
-            'updated_at' => now()
-        ]);
-        
-        return response()->json(['success' => true]);
-        
-    } catch (\Exception $e) {
-        Log::error('Error security event: ' . $e->getMessage());
-        return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+    /**
+     * ============================================================
+     * SINCRONIZAR TIMER (llamado cada 5 segundos)
+     * POST /api/v1/student/modular-exam/sync-timer/{attemptId}
+     * ============================================================
+     */
+    public function syncTimer(Request $request, $attemptId)
+    {
+        try {
+            $request->validate([
+                'time_left' => 'required|integer|min:0'
+            ]);
+            
+            $attempt = DB::table('modular_exam_attempts')
+                ->where('id', $attemptId)
+                ->where('student_id', auth()->id())
+                ->first();
+            
+            if (!$attempt) {
+                return response()->json(['error' => 'Intento no encontrado'], 404);
+            }
+            
+            DB::table('modular_exam_attempts')
+                ->where('id', $attemptId)
+                ->update([
+                    'time_left' => $request->time_left,
+                    'last_sync_at' => now(),
+                    'updated_at' => now()
+                ]);
+            
+            return response()->json(['success' => true]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error en syncTimer: ' . $e->getMessage());
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
     }
-}
+
+    /**
+     * ============================================================
+     * REGISTRAR AUDIO REPRODUCIDO
+     * POST /api/v1/student/modular-exam/audio-played/{attemptId}
+     * ============================================================
+     */
+    public function registerAudioPlayed(Request $request, $attemptId)
+    {
+        try {
+            $request->validate([
+                'module_id' => 'required|integer'
+            ]);
+            
+            $attempt = DB::table('modular_exam_attempts')
+                ->where('id', $attemptId)
+                ->where('student_id', auth()->id())
+                ->first();
+            
+            if (!$attempt) {
+                return response()->json(['error' => 'Intento no encontrado'], 404);
+            }
+            
+            $playedAudios = json_decode($attempt->played_audios ?? '[]', true);
+            
+            if (!in_array($request->module_id, $playedAudios)) {
+                $playedAudios[] = $request->module_id;
+            }
+            
+            DB::table('modular_exam_attempts')
+                ->where('id', $attemptId)
+                ->update([
+                    'played_audios' => json_encode($playedAudios),
+                    'updated_at' => now()
+                ]);
+            
+            return response()->json(['success' => true]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error en registerAudioPlayed: ' . $e->getMessage());
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * ============================================================
+     * REGISTRAR IMAGEN VISTA
+     * POST /api/v1/student/modular-exam/media-viewed/{attemptId}
+     * ============================================================
+     */
+    public function registerMediaViewed(Request $request, $attemptId)
+    {
+        try {
+            $request->validate([
+                'module_id' => 'required|integer',
+                'media_type' => 'required|in:audio,image'
+            ]);
+            
+            $attempt = DB::table('modular_exam_attempts')
+                ->where('id', $attemptId)
+                ->where('student_id', auth()->id())
+                ->first();
+            
+            if (!$attempt) {
+                return response()->json(['error' => 'Intento no encontrado'], 404);
+            }
+            
+            $viewedMedia = json_decode($attempt->viewed_media ?? '[]', true);
+            $key = $request->media_type . '_' . $request->module_id;
+            
+            if (!in_array($key, $viewedMedia)) {
+                $viewedMedia[] = $key;
+            }
+            
+            DB::table('modular_exam_attempts')
+                ->where('id', $attemptId)
+                ->update([
+                    'viewed_media' => json_encode($viewedMedia),
+                    'updated_at' => now()
+                ]);
+            
+            return response()->json(['success' => true]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error en registerMediaViewed: ' . $e->getMessage());
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * ============================================================
+     * EVENTO DE SEGURIDAD
+     * POST /api/v1/student/modular-exam/security-event
+     * ============================================================
+     */
+    public function securityEvent(Request $request)
+    {
+        try {
+            DB::table('security_logs')->insert([
+                'user_id' => auth()->id(),
+                'exam_attempt_id' => $request->exam_attempt_id ?? null,
+                'event_type' => $request->event_type,
+                'details' => $request->details,
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+            
+            return response()->json(['success' => true]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error security event: ' . $e->getMessage());
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
     /**
      * ============================================================
      * GUARDAR RESPUESTAS DE UN MÓDULO
@@ -475,7 +631,6 @@ public function securityEvent(Request $request)
         }
     }
 
-
     /**
      * ============================================================
      * AVANZAR AL SIGUIENTE MÓDULO O FINALIZAR
@@ -499,12 +654,11 @@ public function securityEvent(Request $request)
             }
             
             $currentIndex = $attempt->current_module_index;
-            $totalModules = 8; // Total de módulos requeridos
+            $totalModules = 8;
             $nextIndex = $currentIndex + 1;
             
             Log::info("Módulo actual: {$currentIndex}, Siguiente: {$nextIndex}, Total: {$totalModules}");
             
-            // Si es el último módulo, finalizar examen
             if ($nextIndex >= $totalModules) {
                 Log::info("=== FINALIZANDO EXAMEN ===");
                 
@@ -516,7 +670,6 @@ public function securityEvent(Request $request)
                     'total_percentage' => $results['total_percentage']
                 ]);
                 
-                // Actualizar attempt
                 DB::table('modular_exam_attempts')
                     ->where('id', $attemptId)
                     ->update([
@@ -528,7 +681,6 @@ public function securityEvent(Request $request)
                         'updated_at' => now()
                     ]);
                 
-                // Actualizar assignment
                 QuizAssignment::where('id', $attempt->assignment_id)->update([
                     'passed' => $results['total_percentage'] >= 60 ? 1 : 0,
                     'attended' => 1,
@@ -545,7 +697,6 @@ public function securityEvent(Request $request)
                 ]);
             } 
             
-            // Avanzar al siguiente módulo
             Log::info("=== AVANZANDO AL MÓDULO {$nextIndex} ===");
             
             DB::table('modular_exam_attempts')
@@ -568,54 +719,97 @@ public function securityEvent(Request $request)
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
-/**
- * FINALIZAR EXAMEN MODULAR
- * POST /api/v1/student/modular-exam/finish/{attemptId}
- */
-public function finishExam($attemptId)
-{
-    try {
-        Log::info("Finalizando examen manualmente: {$attemptId}");
-        
-        $attempt = DB::table('modular_exam_attempts')
-            ->where('id', $attemptId)
-            ->where('student_id', auth()->id())
-            ->first();
-        
-        if (!$attempt) {
-            return response()->json(['error' => 'Intento no encontrado'], 404);
-        }
-        
-        $results = $this->calculateResults($attemptId);
-        
-        DB::table('modular_exam_attempts')
-            ->where('id', $attemptId)
-            ->update([
-                'status' => 'completed',
-                'completed_at' => now(),
-                'total_score' => $results['total_score'],
-                'total_percentage' => $results['total_percentage'],
-                'results_data' => json_encode($results),
+
+    /**
+     * ============================================================
+     * FINALIZAR EXAMEN MODULAR
+     * POST /api/v1/student/modular-exam/finish/{attemptId}
+     * ============================================================
+     */
+    public function finishExam($attemptId)
+    {
+        try {
+            Log::info("Finalizando examen manualmente: {$attemptId}");
+            
+            $attempt = DB::table('modular_exam_attempts')
+                ->where('id', $attemptId)
+                ->where('student_id', auth()->id())
+                ->first();
+            
+            if (!$attempt) {
+                return response()->json(['error' => 'Intento no encontrado'], 404);
+            }
+            
+            $results = $this->calculateResults($attemptId);
+            
+            DB::table('modular_exam_attempts')
+                ->where('id', $attemptId)
+                ->update([
+                    'status' => 'completed',
+                    'completed_at' => now(),
+                    'total_score' => $results['total_score'],
+                    'total_percentage' => $results['total_percentage'],
+                    'results_data' => json_encode($results),
+                    'updated_at' => now()
+                ]);
+            
+            QuizAssignment::where('id', $attempt->assignment_id)->update([
+                'passed' => $results['total_percentage'] >= 60 ? 1 : 0,
+                'attended' => 1,
+                'active' => 0,
                 'updated_at' => now()
             ]);
-        
-        QuizAssignment::where('id', $attempt->assignment_id)->update([
-            'passed' => $results['total_percentage'] >= 60 ? 1 : 0,
-            'attended' => 1,
-            'active' => 0,
-            'updated_at' => now()
-        ]);
-        
-        return response()->json([
-            'success' => true,
-            'results' => $results
-        ]);
-        
-    } catch (\Exception $e) {
-        Log::error('Error en finishExam: ' . $e->getMessage());
-        return response()->json(['error' => $e->getMessage()], 500);
+            
+            return response()->json([
+                'success' => true,
+                'results' => $results
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error en finishExam: ' . $e->getMessage());
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
     }
-}
+
+    /**
+     * ============================================================
+     * INVALIDAR EXAMEN POR EXPULSIÓN
+     * POST /api/v1/student/modular-exam/invalidate/{attemptId}
+     * ============================================================
+     */
+    public function invalidateExam($attemptId)
+    {
+        try {
+            $attempt = DB::table('modular_exam_attempts')
+                ->where('id', $attemptId)
+                ->where('student_id', auth()->id())
+                ->first();
+            
+            if (!$attempt) {
+                return response()->json(['error' => 'Intento no encontrado'], 404);
+            }
+            
+            DB::table('modular_exam_attempts')
+                ->where('id', $attemptId)
+                ->update([
+                    'status' => 'invalidated',
+                    'completed_at' => now(),
+                    'updated_at' => now()
+                ]);
+            
+            QuizAssignment::where('id', $attempt->assignment_id)->update([
+                'attended' => 1,
+                'active' => 0,
+                'updated_at' => now()
+            ]);
+            
+            return response()->json(['success' => true]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error en invalidateExam: ' . $e->getMessage());
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
 
     /**
      * ============================================================
@@ -695,21 +889,18 @@ public function finishExam($attemptId)
             }
         }
         
-        // Calcular porcentajes por nivel
         foreach ($results['by_level'] as $level => $data) {
             $results['by_level'][$level]['percentage'] = $data['total'] > 0 
                 ? round(($data['score'] / $data['total']) * 100) 
                 : 0;
         }
         
-        // Calcular porcentajes por tipo
         foreach ($results['by_type'] as $type => $data) {
             $results['by_type'][$type]['percentage'] = $data['total'] > 0 
                 ? round(($data['score'] / $data['total']) * 100) 
                 : 0;
         }
         
-        // Calcular porcentaje total
         $results['total_percentage'] = $results['total_points'] > 0 
             ? round(($results['total_score'] / $results['total_points']) * 100) 
             : 0;
@@ -718,7 +909,6 @@ public function finishExam($attemptId)
         
         return $results;
     }
-
 
     /**
      * ============================================================
@@ -730,7 +920,6 @@ public function finishExam($attemptId)
         $letters = ['A', 'B', 'C', 'D'];
         return $letters[$number - 1] ?? 'A';
     }
-
 
     /**
      * ============================================================
@@ -762,7 +951,6 @@ public function finishExam($attemptId)
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
-
 
     /**
      * ============================================================
@@ -817,116 +1005,13 @@ public function finishExam($attemptId)
         }
     }
 
-
     /**
      * ============================================================
-     * DESCARGAR PDF DE RESULTADOS (ESTUDIANTE)
-     * GET /api/v1/student/modular-results/{attemptId}/download
-     * ============================================================
-     */
-   public function downloadResultsPDF($attemptId)
-{
-    try {
-        Log::info("Descargando PDF para attempt: {$attemptId}");
-        
-        $attempt = DB::table('modular_exam_attempts')
-            ->where('id', $attemptId)
-            ->where('student_id', auth()->id())
-            ->first();
-        
-        if (!$attempt) {
-            return response()->json(['error' => 'Resultado no encontrado'], 404);
-        }
-        
-        $results = json_decode($attempt->results_data, true);
-        $student = auth()->user();
-        $assignment = QuizAssignment::find($attempt->assignment_id);
-        $language = Language::find($assignment->language_id);
-        
-        // Obtener carrera del estudiante
-        $career = DB::table('students')
-            ->leftJoin('careers', 'students.career_id', '=', 'careers.id')
-            ->where('students.user_id', $student->id)
-            ->select('careers.name as career_name')
-            ->first();
-        
-        // Generar QR de verificación
-        $verification = Verification::firstOrCreate(
-            [
-                'verifiable_id' => $attemptId,
-                'verifiable_type' => 'App\Models\ModularExamAttempt'
-            ],
-            [
-                'uuid' => (string) \Illuminate\Support\Str::uuid(),
-                'type' => 'MODULAR_EXAM',
-            ]
-        );
-        
-        $urlVerificacion = url("/verify/{$verification->uuid}");
-        $qrCode = base64_encode(
-            QrCode::format('svg')
-                ->size(100)
-                ->errorCorrection('H')
-                ->generate($urlVerificacion)
-        );
-        
-        $data = [
-            'student_name' => trim($student->name . ' ' . ($student->lastname ?? '') . ' ' . ($student->surname ?? '')),
-            'student_email' => $student->email,
-            'career' => $career->career_name ?? 'NO ASIGNADA',
-            'language_name' => $language->name ?? 'No especificado',
-            'date' => Carbon::parse($attempt->completed_at)->format('d/m/Y H:i'),
-            'total_percentage' => $results['total_percentage'] ?? 0,
-            'total_score' => $results['total_score'] ?? 0,
-            'total_points' => $results['total_points'] ?? 0,
-            'levels' => $results['by_level'] ?? [],
-            'by_type' => $results['by_type'] ?? [],
-            'details' => $results['details'] ?? [],
-            'passed' => ($results['total_percentage'] ?? 0) >= 60,
-            'qrCode' => $qrCode,
-            'teacher_name' => 'Sistema'
-        ];
-        
-        // ✅ Usando la vista Blade
-        $pdf = Pdf::loadView('pdf.modular_results', $data);
-        $pdf->setPaper('a4', 'portrait');
-        
-        return $pdf->download("Reporte_Modular_{$attemptId}.pdf");
-        
-    } catch (\Exception $e) {
-        Log::error('Error en downloadResultsPDF: ' . $e->getMessage());
-        return response()->json(['error' => $e->getMessage()], 500);
-    }
-}
-
-    /**
-     * ============================================================
-     * OBTENER NIVEL DE TEXTO SEGÚN PORCENTAJE
-     * ============================================================
-     */
-    private function getNivelText($percentage)
-    {
-        if ($percentage >= 90) return "C2 - MAESTRÍA";
-        if ($percentage >= 80) return "C1 - AVANZADO DOMINIO OPERATIVO EFICAZ";
-        if ($percentage >= 60) return "B2 - INTERMEDIO-ALTO";
-        if ($percentage >= 50) return "B1 - INTERMEDIO";
-        if ($percentage >= 40) return "A2 - BÁSICO";
-        return "A1 - PRINCIPIANTE";
-    }
-
-
-    /**
-     * ============================================================
-     * ==================== ADMIN REPORTS ========================
-     * ============================================================
-     */
-
-
-    /**
      * LISTA DE EXÁMENES MODULARES COMPLETADOS (ADMIN)
      * GET /api/v1/admin/modular-reports
+     * ============================================================
      */
-    public function index()
+    public function adminIndex()
     {
         try {
             Log::info("Admin obteniendo lista de exámenes modulares");
@@ -969,499 +1054,8 @@ public function finishExam($attemptId)
             return response()->json($processed);
             
         } catch (\Exception $e) {
-            Log::error('Error en index modular reports: ' . $e->getMessage());
+            Log::error('Error en adminIndex modular reports: ' . $e->getMessage());
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
-
-
-    /**
-     * EXPORTAR PDF INDIVIDUAL (ADMIN)
-     * GET /api/v1/admin/modular-reports/{id}/pdf
-     */
-    public function exportPdfIndividual($id)
-    {
-        try {
-            Log::info("Admin exportando PDF individual: {$id}");
-            
-            $attempt = DB::table('modular_exam_attempts')->where('id', $id)->first();
-            if (!$attempt) {
-                return response()->json(['error' => 'Resultado no encontrado'], 404);
-            }
-            
-            $student = DB::table('users')->where('id', $attempt->student_id)->first();
-            $assignment = QuizAssignment::find($attempt->assignment_id);
-            $language = Language::find($assignment->language_id);
-            $results = json_decode($attempt->results_data, true);
-            
-            $l_score = $results['by_type']['listening']['score'] ?? 0;
-            $l_total = $results['by_type']['listening']['total'] ?? 0;
-            $r_score = $results['by_type']['reading']['score'] ?? 0;
-            $r_total = $results['by_type']['reading']['total'] ?? 0;
-            $total_percentage = $attempt->total_percentage;
-            $levels = $results['by_level'] ?? [];
-            
-            // Generar QR
-            $verification = Verification::firstOrCreate(
-                [
-                    'verifiable_id' => $attempt->id,
-                    'verifiable_type' => 'App\Models\ModularExamAttempt'
-                ],
-                [
-                    'uuid' => (string) \Illuminate\Support\Str::uuid(),
-                    'type' => 'EXAMEN MODULAR',
-                ]
-            );
-            
-            $urlVerificacion = url("/verify/{$verification->uuid}");
-            $qrcode = base64_encode(
-                QrCode::format('svg')
-                    ->size(100)
-                    ->errorCorrection('H')
-                    ->generate($urlVerificacion)
-            );
-            
-            $evaluador = auth()->user();
-            $fullName = trim(($student->name ?? '') . ' ' . ($student->lastname ?? '') . ' ' . ($student->surname ?? ''));
-            $studentName = !empty($fullName) ? $fullName : ($student->name ?? 'N/A');
-            
-          $studentData = DB::table('students')
-    ->leftJoin('careers', 'students.career_id', '=', 'careers.id')
-    ->where('students.user_id', $attempt->student_id)
-    ->select('careers.name as career_name')
-    ->first();
-            
-            $careerName = $studentData->career_name ?? 'NO ASIGNADA';
-            $completed_at = $attempt->completed_at;
-            
-            $html = '
-            <!DOCTYPE html>
-            <html lang="es">
-            <head>
-                <meta charset="UTF-8">
-                <style>
-                    @page {
-                        margin-top: 5cm;
-                        margin-right: 2cm;
-                        margin-bottom: 2.5cm;
-                        margin-left: 2cm;
-                    }
-                    body { 
-                        font-family: \'Arial\', sans-serif; 
-                        font-size: 11px; 
-                        line-height: 1.2; 
-                    }
-                    
-                    .table-container { 
-                        width: 100%; 
-                        border-collapse: collapse; 
-                        margin-bottom: 15px; 
-                    }
-                    .table-container th, .table-container td { 
-                        border: 1px solid #000; 
-                        padding: 5px; 
-                        text-align: center; 
-                    }
-                    
-                    .title-header { 
-                        font-weight: bold; 
-                        font-size: 15px; 
-                        text-align: center; 
-                        margin-bottom: 10px; 
-                        text-transform: uppercase; 
-                    }
-                    .section-label { 
-                        text-align: left !important; 
-                        font-size: 12px; 
-                        font-weight: bold; 
-                        border: none !important; 
-                        padding: 10px 0 5px 0; 
-                    }
-
-                    .bg-gray { 
-                        background-color: #ffffff; 
-                        font-weight: bold; 
-                        font-size: 9px; 
-                    }
-                    .full-name { 
-                        font-size: 11px; 
-                        font-weight: bold; 
-                        text-transform: uppercase; 
-                    }
-                    
-                    .final-score-box { 
-                        font-size: 28px; 
-                        font-weight: bold; 
-                        vertical-align: middle; 
-                    }
-                    
-                    .signature-table { 
-                        width: 100%; 
-                        margin-top: 60px; 
-                        border: none !important; 
-                    }
-                    .signature-table td { 
-                        border: none !important; 
-                        text-align: center; 
-                        width: 50%; 
-                        vertical-align: bottom; 
-                    }
-                    .sig-line { 
-                        border-top: 1px solid #000; 
-                        width: 80%; 
-                        margin: 0 auto; 
-                        padding-top: 5px; 
-                        font-weight: bold; 
-                        text-transform: uppercase; 
-                        font-size: 9px; 
-                    }
-                </style>
-            </head>
-            <body>
-
-                <div class="title-header">
-                    PLANILLA DE EVALUACIÓN<br>
-                    EXAMEN MODULAR - ' . strtoupper($language->name ?? 'IDIOMA') . '
-                </div>
-
-                <div class="section-label">I. INFORMACIÓN PERSONAL DEL EVALUADO</div>
-                <table class="table-container">
-                    <tr>
-                        <td class="bg-gray" width="20%"><strong>NOMBRE:</strong></td>
-                        <td class="full-name" width="55%" style="text-align: left; padding-left: 10px;">
-                            ' . $studentName . '
-                        </td>
-                        <td width="12%" rowspan="2" class="bg-gray"><div align="right"><strong>NOTA FINAL</strong></div></td>
-                        <td class="final-score-box" width="13%" rowspan="2" style="font-size: 24px; background: #f8fafc;">
-                            ' . $total_percentage . '%
-                        </td>
-                    </tr>
-                    
-                    <tr>
-                        <td colspan="2" style="padding: 0;">
-                            <table width="100%" style="border: none; border-collapse: collapse;">
-                                <tr>
-                                    <td class="bg-gray" style="border: none; border-right: 1px solid #000;" width="25%"><strong>CARRERA:</strong></td>
-                                    <td style="border: none; border-right: 1px solid #000; text-align: left; padding-left: 10px;" width="40%">
-                                        ' . $careerName . '
-                                    </td>
-                                    <td class="bg-gray" style="border: none; border-right: 1px solid #000;" width="15%"><strong>IDIOMA:</strong></td>
-                                    <td style="border: none; text-align: center;" width="20%">
-                                        ' . ($language->name ?? 'N/A') . '
-                                    </td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
-                    
-                    <tr>
-                        <td class="bg-gray"><strong>FECHA EVALUACIÓN</strong></td>
-                        <td colspan="3" style="text-align: left; padding-left: 10px;">
-                            ' . \Carbon\Carbon::parse($completed_at)->format('d \d\e F \d\e Y') . '
-                        </td>
-                    </tr>
-                </table>
-
-                <div class="section-label">II. RESULTADOS DE LA EVALUACIÓN</div>
-                <table class="table-container">
-                    <tr>
-                        <th width="30%" rowspan="2">CRITERIO</th>
-                        <th colspan="2">PARCIAL</th>
-                        <th width="15%" rowspan="2">TOTAL<br>PREGUNTAS</th>
-                        <th width="15%" rowspan="2">NOTA<br>FINAL</th>
-                    </tr>
-                    <tr>
-                        <th width="15%">CORRECTAS</th>
-                        <th width="15%">INCORRECTAS</th>
-                    </tr>
-                    <tr>
-                        <td style="text-align: left; font-weight: bold;">COMPRENSIÓN AUDITIVA</td>
-                        <td>' . $l_score . '</td>
-                        <td>' . ($l_total - $l_score) . '</td>
-                        <td>' . $l_total . '</td>
-                        <td rowspan="2" class="final-score-box">' . $total_percentage . '%</td>
-                    </tr>
-                    <tr>
-                        <td style="text-align: left; font-weight: bold;">COMPRENSIÓN DE LECTURA</td>
-                        <td>' . $r_score . '</td>
-                        <td>' . ($r_total - $r_score) . '</td>
-                        <td>' . $r_total . '</td>
-                    </tr>
-                </table>
-
-                <div class="section-label">III. RESULTADOS POR NIVEL</div>
-                <table class="table-container">
-                    <tr>
-                        <th width="25%">NIVEL</th>
-                        <th width="25%">PUNTAJE</th>
-                        <th width="25%">PORCENTAJE</th>
-                        <th width="25%">ESTADO</th>
-                    </tr>';
-            
-            foreach ($levels as $levelName => $levelData) {
-                $html .= '
-                    <tr>
-                        <td style="text-align: center; font-weight: bold;">' . $levelName . '</td>
-                        <td style="text-align: center;">' . $levelData['score'] . '/' . $levelData['total'] . '</td>
-                        <td style="text-align: center;">' . $levelData['percentage'] . '%</td>
-                        <td style="text-align: center;">
-                            <span style="color: ' . ($levelData['percentage'] >= 60 ? '#059669' : '#e11d48') . '; font-weight: bold;">
-                                ' . ($levelData['percentage'] >= 60 ? 'APROBADO' : 'REPROBADO') . '
-                            </span>
-                        </td>
-                    </tr>';
-            }
-            
-            $html .= '
-                </table>
-
-                <div class="section-label">IV. NIVEL DE CONOCIMIENTO ALCANZADO</div>
-                <table class="table-container">
-                    <tr>
-                        <td style="padding: 15px; font-size: 14px; font-weight: bold;">
-                            ' . $this->getNivelText($total_percentage) . '
-                        </td>
-                    </tr>
-                </table>
-
-                <table class="signature-table">
-                    <tr>
-                        <td>
-                            <div class="sig-line" style="text-transform: uppercase; font-weight: bold; margin-bottom: 5px;">
-                                ' . $studentName . '
-                            </div>
-                            CONFORMIDAD ESTUDIANTE
-                        </td>
-                        <td>
-                            <div class="sig-line" style="text-transform: uppercase; font-weight: bold; margin-bottom: 5px;">
-                                ' . ($evaluador->name ?? '') . ' ' . ($evaluador->lastname ?? '') . '
-                            </div>
-                            EVALUADOR
-                        </td>
-                    </tr>
-                </table>
-
-                <div style="text-align: center; margin-top: 20px;">
-                    <img src="data:image/svg+xml;base64,' . $qrcode . '" width="100" height="100">
-                    <p style="font-size: 7px; color: #64748b; margin-top: 5px; text-transform: uppercase;">
-                        Validación Electrónica de Autenticidad
-                    </p>
-                </div>
-            </body>
-            </html>';
-            
-            $pdf = Pdf::loadHTML($html);
-            return $pdf->download("Reporte_Modular_{$id}.pdf");
-            
-        } catch (\Exception $e) {
-            Log::error('Error PDF Individual Modular: ' . $e->getMessage());
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
-    }
-
-
-  /**
- * EXPORTAR LISTA GENERAL (ADMIN)
- * GET /api/v1/admin/modular-reports/export-pdf
- */
-
-public function exportPdfGeneral(Request $request)
-{
-    try {
-        Log::info("Admin exportando PDF general");
-        
-        $query = DB::table('modular_exam_attempts')
-            ->join('users', 'modular_exam_attempts.student_id', '=', 'users.id')
-            ->join('quiz_assignments', 'modular_exam_attempts.assignment_id', '=', 'quiz_assignments.id')
-            ->join('languages', 'quiz_assignments.language_id', '=', 'languages.id')
-            ->where('modular_exam_attempts.status', 'completed');
-        
-        $filter = $request->filter;
-        if ($filter === 'passed') {
-            $query->where('modular_exam_attempts.total_percentage', '>=', 60);
-            $title = "REPORTE DE EXÁMENES MODULARES APROBADOS";
-        } elseif ($filter === 'failed') {
-            $query->where('modular_exam_attempts.total_percentage', '<', 60);
-            $title = "REPORTE DE EXÁMENES MODULARES REPROBADOS";
-        } else {
-            $title = "CONSOLIDADO GENERAL DE EXÁMENES MODULARES";
-        }
-        
-        $attempts = $query->orderBy('modular_exam_attempts.completed_at', 'desc')
-            ->select(
-                'modular_exam_attempts.id',
-                'modular_exam_attempts.student_id',
-                'modular_exam_attempts.total_percentage',
-                'modular_exam_attempts.completed_at',
-                DB::raw("CONCAT(users.name, ' ', users.lastname, ' ', COALESCE(users.surname, '')) as student_name"),
-                'languages.name as language_name'
-            )
-            ->get();
-        
-        // ==============================================
-        // Preparar lista de estudiantes con id_number
-        // ==============================================
-        $studentsList = [];
-        foreach ($attempts as $attempt) {
-            // Obtener el id_number del estudiante
-            $studentData = DB::table('students')
-                ->where('user_id', $attempt->student_id)
-                ->first();
-            
-            $idNumber = $studentData->id_number ?? 'N/D';
-            
-            $studentsList[] = [
-                'full_name' => trim($attempt->student_name),
-                'id_number' => $idNumber,
-                'language' => $attempt->language_name,
-                'percentage' => (int)$attempt->total_percentage,
-                'date' => Carbon::parse($attempt->completed_at)->format('d/m/Y')
-            ];
-        }
-        
-        // Calcular estadísticas
-        $totalStudents = count($attempts);
-        $approvedCount = $attempts->where('total_percentage', '>=', 60)->count();
-        $failedCount = $attempts->where('total_percentage', '<', 60)->count();
-        
-        // ==============================================
-        // Crear nueva verificación con metadata completo
-        // ==============================================
-        $verification = Verification::create([
-            'uuid' => (string) \Illuminate\Support\Str::uuid(),
-            'verifiable_type' => null,
-            'verifiable_id' => null,
-            'type' => 'MODULAR_GENERAL_REPORT',
-            'metadata' => json_encode([
-                'students' => $studentsList,
-                'since' => $request->since ?? null,
-                'until' => $request->until ?? null,
-                'generated_by' => auth()->user()->name ?? 'Sistema',
-                'filter' => $filter ?: 'all',
-                'total_students' => $totalStudents,
-                'approved_count' => $approvedCount,
-                'failed_count' => $failedCount
-            ], JSON_UNESCAPED_UNICODE),  // ← Para mantener caracteres especiales
-            'scans_count' => 0
-        ]);
-        
-        // ==============================================
-        // Generar QR con URL de verificación
-        // ==============================================
-        $urlVerificacion = url("/verify/{$verification->uuid}");
-        $qrCode = base64_encode(
-            QrCode::format('svg')
-                ->size(80)
-                ->errorCorrection('H')
-                ->generate($urlVerificacion)
-        );
-        
-        $html = $this->generateGeneralReportHTML($title, $attempts, $qrCode, $verification);
-        
-        $pdf = Pdf::loadHTML($html);
-        $pdf->setPaper('letter', 'portrait');
-        
-        Log::info("PDF general generado: " . $attempts->count() . " registros");
-        
-        return $pdf->download("reporte_modular_" . now()->format('Ymd_His') . ".pdf");
-        
-    } catch (\Exception $e) {
-        Log::error('Error PDF General Modular: ' . $e->getMessage());
-        Log::error($e->getTraceAsString());
-        return response()->json(['error' => $e->getMessage()], 500);
-    }
-}
-   /**
- * GENERAR HTML PARA REPORTE GENERAL
- */
-private function generateGeneralReportHTML($title, $attempts, $qrCode, $verification = null)
-{
-    $html = '
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>' . $title . '</title>
-        <style>
-            @page { margin: 2cm; size: letter portrait; }
-            body { font-family: Arial, sans-serif; font-size: 10px; }
-            h1 { text-align: center; color: #1e293b; font-size: 16px; }
-            .header { text-align: center; margin-bottom: 20px; position: relative; }
-            .qr-container { position: absolute; top: 0; right: 0; text-align: center; }
-            .qr-container img { width: 65px; height: 65px; }
-            .qr-text { font-size: 6px; color: #64748b; margin-top: 2px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 9px; }
-            th { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 8px 5px; text-align: center; }
-            td { border: 1px solid #cbd5e1; padding: 8px 5px; }
-            .text-left { text-align: left; }
-            .text-center { text-align: center; }
-            .approved { color: #059669; font-weight: bold; }
-            .failed { color: #e11d48; font-weight: bold; }
-            .footer { margin-top: 30px; text-align: center; font-size: 8px; color: #94a3b8; }
-            .verification-code { 
-                background: #f8fafc; 
-                padding: 5px 10px; 
-                border-radius: 8px; 
-                font-family: monospace; 
-                font-size: 8px;
-                display: inline-block;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="header">
-            <div class="qr-container">
-                <img src="data:image/svg+xml;base64,' . $qrCode . '">
-                <div class="qr-text">Validación Oficial</div>
-            </div>
-            <h1>' . $title . '</h1>
-            <p>Sistema de Evaluación de Idiomas - EmiSystem</p>
-            <p>Generado por: ' . (auth()->user()->name ?? 'Sistema') . ' | Fecha: ' . now()->format('d/m/Y H:i') . '</p>';
-    
-    if ($verification) {
-        $html .= '<p class="verification-code" style="margin-top: 10px;"> Código de verificación: ' . strtoupper(substr($verification->uuid, 0, 8)) . '</p>';
-    }
-    
-    $html .= '
-        </div>
-        
-        <table>
-            <thead>
-                <tr>
-                    <th class="text-left">Estudiante</th>
-                    <th class="text-left">Idioma</th>
-                    <th>Puntaje</th>
-                    <th>Fecha</th>
-                    <th>Estado</th>
-                </tr>
-            </thead>
-            <tbody>';
-    
-    foreach ($attempts as $attempt) {
-        $status = $attempt->total_percentage >= 60 ? 'APROBADO' : 'REPROBADO';
-        $statusClass = $attempt->total_percentage >= 60 ? 'approved' : 'failed';
-        
-        $html .= '
-                <tr>
-                    <td class="text-left">' . ($attempt->student_name ?? 'N/A') . '</td>
-                    <td class="text-left">' . ($attempt->language_name ?? 'N/A') . '</td>
-                    <td class="text-center">' . number_format($attempt->total_percentage, 1) . '%</td>
-                    <td class="text-center">' . Carbon::parse($attempt->completed_at)->format('d/m/Y') . '</td>
-                    <td class="text-center ' . $statusClass . '">' . $status . '</td>
-                </tr>';
-    }
-    
-    $html .= '
-            </tbody>
-        </table>
-        
-        <div class="footer">
-            <p>Documento generado automáticamente por EmiSystem - Reporte de Exámenes Modulares</p>
-            <p>Verifica la autenticidad de este documento escaneando el código QR o ingresando el código en emisystem.edu/verify</p>
-        </div>
-    </body>
-    </html>';
-    
-    return $html;
-}
 }
