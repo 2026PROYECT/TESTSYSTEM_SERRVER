@@ -4,9 +4,9 @@
 
 # Ignorar solo lo innecesario dentro de storage
 /storage/*.key
-/storage/framework/
+
 /storage/debugbar/
-/storage/logs/
+
 /storage/backups/
 /storage/app/temp/
 /storage/app/exports/
