@@ -12,7 +12,7 @@
 /storage/app/exports/
 /storage/app/imports/
 
-# ✅ Incluir todo lo público dentro de storage
+# ✅ Incluir todo lo público dentro de storage (aud_imag y demás)
 !/storage/app/public/
 !/storage/app/public/**
 
