@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\SecurityLog;
-use App\Models\ExamAttempt;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -19,49 +18,61 @@ class SecurityLogController extends Controller
     public function store(Request $request)
 {
     try {
+        Log::info('🔐 Security Log Store called', $request->all());
+        
         $request->validate([
-            'exam_attempt_id' => 'nullable|integer', // 🔥 CAMBIAR A nullable
+            'exam_attempt_id' => 'nullable|integer',
             'event_type' => 'required|string|max:255',
             'details' => 'nullable|string|max:1000'
         ]);
         
         $user = auth()->user();
         
-        // 🔥 ELIMINAR o COMENTAR esta validación
-        // $examAttempt = ExamAttempt::where('id', $request->exam_attempt_id)
-        //     ->where('student_id', $user->id)
-        //     ->first();
-        //     
-        // if (!$examAttempt) {
-        //     return response()->json(['error' => 'No autorizado'], 403);
-        // }
+        if (!$user) {
+            Log::error('No authenticated user');
+            return response()->json(['error' => 'No autenticado'], 401);
+        }
         
-        // Contar violaciones en los últimos 30 minutos
+        // 🔥 1. Verificar si el usuario ya está bloqueado
+        if ($user->is_blocked) {
+            Log::warning("Usuario bloqueado intenta registrar evento: {$user->id}");
+            return response()->json([
+                'success' => false,
+                'error' => 'Tu cuenta está bloqueada. No puedes continuar.',
+                'status' => 'user_blocked'
+            ], 403);
+        }
+        
+        // 🔥 2. Verificar si el examen ya fue invalidado
+        if ($request->exam_attempt_id) {
+            $attempt = DB::table('modular_exam_attempts')
+                ->where('id', $request->exam_attempt_id)
+                ->first();
+            
+            if ($attempt && $attempt->status === 'invalidated') {
+                Log::warning("Intento de registrar evento en examen invalidado: {$request->exam_attempt_id}");
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Este examen ya fue invalidado. No se pueden registrar más eventos.',
+                    'status' => 'exam_invalidated'
+                ], 403);
+            }
+        }
+        
+        // Obtener límite desde el modelo
+        $limit = SecurityLog::EVENT_LIMITS[$request->event_type] ?? 3;
+        
+        // Contar violaciones recientes del mismo tipo (últimos 30 minutos)
         $violationCount = SecurityLog::where('user_id', $user->id)
             ->where('exam_attempt_id', $request->exam_attempt_id)
             ->where('event_type', $request->event_type)
             ->where('created_at', '>', now()->subMinutes(30))
             ->count();
         
-        // Configurar límites por tipo de violación
-        $limits = [
-            'tab_switch' => 3,
-            'mouse_leave' => 5,
-            'copy_attempt' => 3,
-            'devtools_opened' => 2,
-            'screenshot_attempt' => 3,
-            'reload_attempt' => 1,
-            'tab_close_attempt' => 1,
-            'view_source_attempt' => 2,
-            'drag_attempt' => 5,
-            'drop_attempt' => 3,
-            'window_resize' => 10,
-            'fullscreen_exit' => 3
-        ];
-        
-        $limit = $limits[$request->event_type] ?? 3;
         $currentViolation = $violationCount + 1;
         $shouldInvalidate = $currentViolation >= $limit;
+        
+        Log::info("Evento: {$request->event_type}, Violación: {$currentViolation}/{$limit}, Invalidar: " . ($shouldInvalidate ? 'SI' : 'NO'));
         
         // Crear el log
         $log = SecurityLog::create([
@@ -74,8 +85,12 @@ class SecurityLogController extends Controller
             'user_agent' => $request->userAgent()
         ]);
         
-        // Si se alcanzó el límite, invalidar el examen modular
+        Log::info('Security log creado ID: ' . $log->id);
+        
+        // 🔥 3. Si se alcanzó el límite, invalidar el examen y bloquear al usuario
         if ($shouldInvalidate && $request->exam_attempt_id) {
+            Log::info('Invalidando examen y bloqueando usuario: ' . $request->exam_attempt_id);
+            
             // Registrar evento de invalidación
             SecurityLog::create([
                 'user_id' => $user->id,
@@ -87,31 +102,48 @@ class SecurityLogController extends Controller
                 'user_agent' => $request->userAgent()
             ]);
             
-            // 🔥 Invalidar en modular_exam_attempts (no en exam_attempts)
+            // Invalidar en modular_exam_attempts
             DB::table('modular_exam_attempts')
                 ->where('id', $request->exam_attempt_id)
                 ->update([
                     'status' => 'invalidated',
+                    'completed_at' => now(),
                     'updated_at' => now()
                 ]);
+            
+            // 🔥 Bloquear al usuario
+            DB::table('users')
+                ->where('id', $user->id)
+                ->update([
+                    'is_blocked' => true,
+                    'blocked_at' => now(),
+                    'blocked_reason' => "Examen modular invalidado por múltiples violaciones: {$request->event_type}",
+                    'updated_at' => now()
+                ]);
+            
+            // 🔥 Invalidar todos los tokens del usuario
+            DB::table('personal_access_tokens')
+                ->where('tokenable_id', $user->id)
+                ->delete();
             
             return response()->json([
                 'success' => true,
                 'status' => 'exam_invalidated',
-                'message' => 'El examen ha sido invalidado por múltiples intentos de violar las normas de seguridad.',
+                'message' => 'El examen ha sido invalidado y tu cuenta ha sido bloqueada por violaciones de seguridad.',
                 'violation_count' => $currentViolation,
-                'limit' => $limit
+                'limit' => $limit,
+                'user_blocked' => true
             ]);
         }
         
         // Calcular advertencias restantes
-        $remainingWarnings = $limit - $currentViolation;
+        $remainingWarnings = max(0, $limit - $currentViolation);
         $warningMessage = null;
         
         if ($remainingWarnings <= 2 && $remainingWarnings > 0) {
             $warningMessages = [
-                1 => "⚠️ ADVERTENCIA: Último intento permitido. Cualquier otra violación invalidará tu examen.",
-                2 => "⚠️ ADVERTENCIA: Te quedan 2 intentos antes de que tu examen sea invalidado."
+                1 => "⚠️ ADVERTENCIA: Último intento permitido. Cualquier otra violación invalidará tu examen y bloqueará tu cuenta.",
+                2 => "⚠️ ADVERTENCIA: Te quedan 2 intentos antes de que tu examen sea invalidado y tu cuenta bloqueada."
             ];
             $warningMessage = $warningMessages[$remainingWarnings] ?? "⚠️ ADVERTENCIA: {$remainingWarnings} intento(s) restante(s)";
         }
@@ -120,8 +152,9 @@ class SecurityLogController extends Controller
             'success' => true,
             'status' => 'logged',
             'message' => 'Evento registrado',
-            'log' => $log,
+            'log_id' => $log->id,
             'violation_count' => $currentViolation,
+            'limit' => $limit,
             'remaining_warnings' => $remainingWarnings,
             'warning' => $warningMessage,
             'should_invalidate' => false
@@ -129,6 +162,7 @@ class SecurityLogController extends Controller
         
     } catch (\Exception $e) {
         Log::error('Error en SecurityLogController@store: ' . $e->getMessage());
+        Log::error($e->getTraceAsString());
         return response()->json([
             'success' => false,
             'error' => 'Error al registrar el evento',
@@ -136,6 +170,50 @@ class SecurityLogController extends Controller
         ], 500);
     }
 }
+    
+    /**
+     * Obtener resumen de violaciones para un estudiante
+     * GET /api/v1/student/my-violations
+     */
+    public function myViolations(Request $request)
+    {
+        try {
+            $violations = SecurityLog::where('user_id', auth()->id())
+                ->whereIn('event_type', array_keys(SecurityLog::EVENT_TYPES))
+                ->select('event_type', 'details', 'created_at', 'exam_attempt_id', 'violation_count')
+                ->orderBy('created_at', 'desc')
+                ->limit(50)
+                ->get()
+                ->map(function($log) {
+                    return [
+                        'type' => $log->event_type,
+                        'type_name' => SecurityLog::EVENT_TYPES[$log->event_type] ?? $log->event_type,
+                        'details' => $log->details,
+                        'date' => $log->created_at->format('d/m/Y H:i:s'),
+                        'violation_number' => $log->violation_count,
+                        'exam_id' => $log->exam_attempt_id
+                    ];
+                });
+            
+            $totalViolations = SecurityLog::where('user_id', auth()->id())
+                ->whereIn('event_type', array_keys(SecurityLog::EVENT_TYPES))
+                ->count();
+            
+            return response()->json([
+                'success' => true,
+                'total_violations' => $totalViolations,
+                'violations' => $violations
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error en myViolations: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+    
     /**
      * Obtener exámenes con violaciones (para admin)
      * GET /api/v1/admin/security/exams-with-violations
@@ -143,7 +221,6 @@ class SecurityLogController extends Controller
     public function getExamsWithViolations()
     {
         try {
-            // Verificar permisos
             if (!in_array(auth()->user()->role, ['admin', 'staff'])) {
                 return response()->json(['error' => 'No autorizado'], 403);
             }
@@ -158,10 +235,12 @@ class SecurityLogController extends Controller
                 ->orderBy('last_violation', 'desc')
                 ->get()
                 ->map(function($log) {
-                    // Obtener datos del estudiante
-                    $examAttempt = ExamAttempt::with('user')->find($log->exam_attempt_id);
+                    $student = DB::table('users')
+                        ->join('modular_exam_attempts', 'users.id', '=', 'modular_exam_attempts.student_id')
+                        ->where('modular_exam_attempts.id', $log->exam_attempt_id)
+                        ->select('users.name', 'users.lastname', 'users.email')
+                        ->first();
                     
-                    // Contar violaciones por tipo
                     $violationsByType = SecurityLog::where('exam_attempt_id', $log->exam_attempt_id)
                         ->select('event_type', DB::raw('count(*) as total'))
                         ->groupBy('event_type')
@@ -171,8 +250,8 @@ class SecurityLogController extends Controller
                     
                     return [
                         'exam_attempt_id' => $log->exam_attempt_id,
-                        'student_name' => $examAttempt?->user?->full_name ?? $examAttempt?->user?->name ?? 'Desconocido',
-                        'email' => $examAttempt?->user?->email ?? '-',
+                        'student_name' => trim(($student->name ?? '') . ' ' . ($student->lastname ?? '')),
+                        'email' => $student->email ?? '-',
                         'violations_count' => $log->violations_count,
                         'last_violation' => $log->last_violation,
                         'violations_by_type' => $violationsByType
@@ -192,150 +271,92 @@ class SecurityLogController extends Controller
             ], 500);
         }
     }
-
+    
     /**
-     * Obtener logs de seguridad por examen (con detalles completos)
+     * Obtener logs de seguridad por examen
      * GET /api/v1/admin/security/logs/{examAttemptId}
      */
     public function getLogsByExam($examAttemptId)
     {
         try {
-            // Verificar permisos
             if (!in_array(auth()->user()->role, ['admin', 'staff'])) {
                 return response()->json(['error' => 'No autorizado'], 403);
             }
             
-            // Obtener información del examen y estudiante
-            $examAttempt = DB::table('exam_attempts')
-                ->leftJoin('users', 'exam_attempts.student_id', '=', 'users.id')
-                ->leftJoin('quizzes', 'exam_attempts.quiz_id', '=', 'quizzes.id')
-                ->where('exam_attempts.id', $examAttemptId)
-                ->select(
-                    'exam_attempts.*',
-                    'users.name as student_name',
-                    'users.lastname as student_lastname',
-                    'users.email as student_email',
-                    'quizzes.title as quiz_title'
-                )
-                ->first();
-            
-            if (!$examAttempt) {
-                return response()->json(['error' => 'Examen no encontrado'], 404);
-            }
-            
-            // Obtener logs de seguridad
-            $logs = DB::table('security_logs')
-                ->where('exam_attempt_id', $examAttemptId)
+            $logs = SecurityLog::where('exam_attempt_id', $examAttemptId)
                 ->orderBy('created_at', 'desc')
-                ->get();
+                ->get()
+                ->map(function($log) {
+                    return [
+                        'id' => $log->id,
+                        'event_type' => $log->event_type,
+                        'event_name' => SecurityLog::EVENT_TYPES[$log->event_type] ?? $log->event_type,
+                        'details' => $log->details,
+                        'violation_count' => $log->violation_count,
+                        'created_at' => $log->created_at->format('d/m/Y H:i:s'),
+                        'ip_address' => $log->ip_address,
+                        'user_agent' => $log->user_agent
+                    ];
+                });
             
-            // Estadísticas
             $stats = [
                 'total_violations' => $logs->count(),
                 'by_type' => $logs->groupBy('event_type')->map->count(),
-                'tab_switches' => $logs->where('event_type', 'tab_switch')->count(),
-                'devtools_attempts' => $logs->where('event_type', 'devtools_opened')->count(),
-                'screenshot_attempts' => $logs->where('event_type', 'screenshot_attempt')->count(),
-                'mouse_leaves' => $logs->where('event_type', 'mouse_leave')->count(),
+                'max_violations_per_type' => $logs->groupBy('event_type')->map(function($group) {
+                    return $group->max('violation_count');
+                })
             ];
             
-            // Verificar si fue invalidado
-            $wasInvalidated = $logs->contains(function($log) {
-                return $log->event_type === 'exam_invalidated';
-            });
-            
-            $fullName = trim(($examAttempt->student_name ?? '') . ' ' . ($examAttempt->student_lastname ?? ''));
+            $student = DB::table('modular_exam_attempts')
+                ->join('users', 'modular_exam_attempts.student_id', '=', 'users.id')
+                ->where('modular_exam_attempts.id', $examAttemptId)
+                ->select('users.name', 'users.lastname', 'users.email')
+                ->first();
             
             return response()->json([
                 'success' => true,
-                'exam' => $examAttempt,
+                'exam_attempt_id' => $examAttemptId,
                 'student' => [
-                    'name' => $fullName ?: 'Desconocido',
-                    'email' => $examAttempt->student_email ?? '-'
+                    'name' => trim(($student->name ?? '') . ' ' . ($student->lastname ?? '')),
+                    'email' => $student->email ?? '-'
                 ],
-                'violations' => $logs,
                 'stats' => $stats,
-                'was_invalidated' => $wasInvalidated
+                'logs' => $logs
             ]);
             
         } catch (\Exception $e) {
             Log::error('Error en getLogsByExam: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'error' => 'Error al obtener los logs del examen',
-                'message' => $e->getMessage()
+                'error' => $e->getMessage()
             ], 500);
         }
     }
     
     /**
-     * Obtener logs de un examen (para admin) - Método alternativo
-     * GET /api/v1/admin/security/index/{examAttemptId}
-     */
-    public function index($examAttemptId)
-    {
-        try {
-            // Verificar permisos de admin
-            if (!in_array(auth()->user()->role, ['admin', 'staff'])) {
-                return response()->json(['error' => 'No autorizado'], 403);
-            }
-            
-            $logs = SecurityLog::where('exam_attempt_id', $examAttemptId)
-                ->with('user')
-                ->orderBy('created_at', 'desc')
-                ->get();
-            
-            // Estadísticas
-            $stats = [
-                'total' => $logs->count(),
-                'by_type' => $logs->groupBy('event_type')->map->count(),
-                'tab_switches' => $logs->where('event_type', 'tab_switch')->count(),
-                'devtools_attempts' => $logs->where('event_type', 'devtools_opened')->count(),
-                'screenshot_attempts' => $logs->where('event_type', 'screenshot_attempt')->count(),
-                'mouse_leaves' => $logs->where('event_type', 'mouse_leave')->count(),
-            ];
-            
-            return response()->json([
-                'success' => true,
-                'logs' => $logs,
-                'stats' => $stats
-            ]);
-            
-        } catch (\Exception $e) {
-            Log::error('Error en index: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Exportar logs de un examen a PDF
+     * Exportar logs a PDF
      * GET /api/v1/admin/security/export/{examAttemptId}
      */
     public function exportPdf($examAttemptId)
     {
         try {
-            // Verificar permisos
             if (!in_array(auth()->user()->role, ['admin', 'staff'])) {
                 return response()->json(['error' => 'No autorizado'], 403);
             }
             
-            $logs = DB::table('security_logs')
-                ->where('exam_attempt_id', $examAttemptId)
+            $logs = SecurityLog::where('exam_attempt_id', $examAttemptId)
                 ->orderBy('created_at', 'desc')
                 ->get();
             
-            $examAttempt = DB::table('exam_attempts')
-                ->leftJoin('users', 'exam_attempts.student_id', '=', 'users.id')
-                ->where('exam_attempts.id', $examAttemptId)
-                ->select('exam_attempts.*', 'users.name', 'users.lastname', 'users.email')
+            $student = DB::table('modular_exam_attempts')
+                ->join('users', 'modular_exam_attempts.student_id', '=', 'users.id')
+                ->where('modular_exam_attempts.id', $examAttemptId)
+                ->select('users.name', 'users.lastname', 'users.email')
                 ->first();
             
-            $fullName = trim(($examAttempt->name ?? '') . ' ' . ($examAttempt->lastname ?? ''));
+            $studentName = trim(($student->name ?? '') . ' ' . ($student->lastname ?? ''));
             
-            $html = $this->generateSecurityReportHTML($logs, $examAttempt, $fullName);
+            $html = $this->generateSecurityReportHTML($logs, $examAttemptId, $studentName, $student->email ?? '-');
             
             $pdf = Pdf::loadHTML($html);
             $pdf->setPaper('a4', 'portrait');
@@ -346,8 +367,7 @@ class SecurityLogController extends Controller
             Log::error('Error en exportPdf: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'error' => 'Error al exportar PDF',
-                'message' => $e->getMessage()
+                'error' => 'Error al exportar PDF'
             ], 500);
         }
     }
@@ -355,60 +375,97 @@ class SecurityLogController extends Controller
     /**
      * Generar HTML para reporte de seguridad
      */
-    private function generateSecurityReportHTML($logs, $examAttempt, $studentName)
+    private function generateSecurityReportHTML($logs, $examAttemptId, $studentName, $studentEmail)
     {
         $html = '
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
-            <title>Reporte de Seguridad - Examen</title>
+            <title>Reporte de Seguridad - Examen Modular</title>
             <style>
                 @page { margin: 2cm; }
                 body { font-family: Arial, sans-serif; font-size: 10px; }
-                h1 { text-align: center; color: #1e293b; font-size: 16px; }
+                h1 { text-align: center; color: #1e293b; font-size: 16px; margin-bottom: 5px; }
+                h2 { font-size: 14px; color: #334155; margin-top: 20px; }
                 .header { text-align: center; margin-bottom: 20px; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                th { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 8px; text-align: center; }
+                .subtitle { color: #64748b; font-size: 10px; margin-bottom: 20px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+                th { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 8px; text-align: center; font-weight: bold; }
                 td { border: 1px solid #cbd5e1; padding: 8px; }
                 .text-center { text-align: center; }
-                .violation-critical { color: #e11d48; font-weight: bold; }
+                .text-left { text-align: left; }
+                .violation-critical { color: #dc2626; font-weight: bold; }
                 .violation-warning { color: #f59e0b; }
-                .footer { margin-top: 30px; text-align: center; font-size: 8px; color: #94a3b8; }
+                .footer { margin-top: 30px; text-align: center; font-size: 8px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 15px; }
+                .info-box { background: #f8fafc; padding: 10px; border-radius: 8px; margin-bottom: 15px; }
             </style>
         </head>
         <body>
             <div class="header">
-                <h1>REPORTE DE SEGURIDAD DEL EXAMEN</h1>
-                <p>Sistema de Evaluación de Idiomas - EmiSystem</p>
-                <p>Generado por: ' . auth()->user()->name . ' | Fecha: ' . now()->format('d/m/Y H:i') . '</p>
+                <h1>REPORTE DE SEGURIDAD</h1>
+                <div class="subtitle">Examen Modular - Sistema de Evaluación de Idiomas</div>
             </div>
             
-            <h3>Información del Estudiante</h3>
-            <table>
-                <tr><th width="30%">Nombre</th><td>' . $studentName . '</td></tr>
-                <tr><th>Email</th><td>' . ($examAttempt->email ?? '-') . '</td></tr>
-                <tr><th>Examen</th><td>' . ($examAttempt->quiz_title ?? '-') . '</td></tr>
-                <tr><th>Fecha</th><td>' . now()->format('d/m/Y H:i:s') . '</td></tr>
-            </table>
+            <div class="info-box">
+                <table style="border: none; width: 100%;">
+                    <tr style="border: none;">
+                        <td style="border: none; width: 30%;"><strong>Estudiante:</strong></td>
+                        <td style="border: none;">' . htmlspecialchars($studentName) . '</td>
+                    </tr>
+                    <tr style="border: none;">
+                        <td style="border: none;"><strong>Email:</strong></td>
+                        <td style="border: none;">' . htmlspecialchars($studentEmail) . '</td>
+                    </tr>
+                    <tr style="border: none;">
+                        <td style="border: none;"><strong>ID Examen:</strong></td>
+                        <td style="border: none;">' . $examAttemptId . '</td>
+                    </tr>
+                    <tr style="border: none;">
+                        <td style="border: none;"><strong>Fecha del reporte:</strong></td>
+                        <td style="border: none;">' . now()->format('d/m/Y H:i:s') . '</td>
+                    </tr>
+                    <tr style="border: none;">
+                        <td style="border: none;"><strong>Total violaciones:</strong></td>
+                        <td style="border: none;">' . $logs->count() . '</td>
+                    </tr>
+                </table>
+            </div>
             
-            <h3>Registro de Violaciones</h3>
-            <tr>
+            <h2>Registro de Violaciones</h2>
+            <table>
                 <thead>
-                    <tr><th>Fecha/Hora</th><th>Tipo de Evento</th><th>Detalles</th><th># Violación</th></tr>
+                    <tr>
+                        <th>#</th>
+                        <th>Fecha/Hora</th>
+                        <th>Tipo de Evento</th>
+                        <th>Detalles</th>
+                        <th># Violación</th>
+                    </tr>
                 </thead>
                 <tbody>';
         
+        $counter = 1;
         foreach ($logs as $log) {
             $rowClass = $log->event_type === 'exam_invalidated' ? 'violation-critical' : '';
-            $rowClass = in_array($log->event_type, ['tab_switch', 'devtools_opened', 'screenshot_attempt']) ? 'violation-warning' : $rowClass;
+            $rowClass = in_array($log->event_type, ['tab_switch', 'devtools_opened', 'screenshot_attempt', 'f12_blocked', 'devtools_blocked']) ? 'violation-warning' : $rowClass;
+            
+            $eventName = SecurityLog::EVENT_TYPES[$log->event_type] ?? $log->event_type;
             
             $html .= '
                 <tr class="' . $rowClass . '">
-                    <td class="text-center">' . date('d/m/Y H:i:s', strtotime($log->created_at)) . '</td>
-                    <td>' . strtoupper(str_replace('_', ' ', $log->event_type)) . '</td>
-                    <td>' . ($log->details ?? '-') . '</td>
+                    <td class="text-center">' . $counter++ . '</td>
+                    <td class="text-center">' . $log->created_at->format('d/m/Y H:i:s') . '</td>
+                    <td class="text-left">' . htmlspecialchars($eventName) . '</td>
+                    <td class="text-left">' . htmlspecialchars($log->details ?? '-') . '</td>
                     <td class="text-center">' . ($log->violation_count ?? 1) . '</td>
+                </tr>';
+        }
+        
+        if ($logs->isEmpty()) {
+            $html .= '
+                <tr>
+                    <td colspan="5" class="text-center">No se registraron violaciones de seguridad</td>
                 </tr>';
         }
         
@@ -418,7 +475,7 @@ class SecurityLogController extends Controller
             
             <div class="footer">
                 <p>Documento generado automáticamente por EmiSystem - Reporte de Seguridad</p>
-                <p>ID de verificación: ' . uniqid() . '</p>
+                <p>Este documento es una evidencia de las violaciones de seguridad durante el examen modular.</p>
             </div>
         </body>
         </html>';
@@ -427,35 +484,7 @@ class SecurityLogController extends Controller
     }
     
     /**
-     * Obtener resumen de violaciones para un estudiante (para el propio estudiante)
-     * GET /api/v1/student/my-violations
-     */
-    public function myViolations(Request $request)
-    {
-        try {
-            $violations = SecurityLog::where('user_id', auth()->id())
-                ->whereIn('event_type', ['tab_switch', 'devtools_opened', 'screenshot_attempt', 'mouse_leave'])
-                ->select('event_type', 'created_at', 'exam_attempt_id')
-                ->orderBy('created_at', 'desc')
-                ->limit(50)
-                ->get();
-            
-            return response()->json([
-                'success' => true,
-                'total_violations' => $violations->count(),
-                'violations' => $violations
-            ]);
-            
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-    
-    /**
-     * Limpiar logs antiguos (para admin)
+     * Limpiar logs antiguos (admin)
      * DELETE /api/v1/admin/security/clean-logs
      */
     public function cleanOldLogs(Request $request)
@@ -470,11 +499,12 @@ class SecurityLogController extends Controller
             
             return response()->json([
                 'success' => true,
-                'message' => "Se eliminaron {$deleted} logs antiguos",
+                'message' => "Se eliminaron {$deleted} logs antiguos (mayores a {$days} días)",
                 'deleted_count' => $deleted
             ]);
             
         } catch (\Exception $e) {
+            Log::error('Error en cleanOldLogs: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'error' => $e->getMessage()

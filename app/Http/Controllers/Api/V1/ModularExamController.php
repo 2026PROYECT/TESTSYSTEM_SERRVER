@@ -4,11 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\QuizAssignment;
-use App\Models\QuizAssignmentModule;
-use App\Models\ModularExamAttempt;
-use App\Models\ModularAnswer;
 use App\Models\Language;
-use App\Models\Verification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -16,7 +12,8 @@ use Carbon\Carbon;
 
 class ModularExamController extends Controller
 {
-    const DEFAULT_MODULE_DURATION = 300; // 5 minutos por defecto si no tiene duration_seconds
+    const TOTAL_TIME = 40;
+    const DEFAULT_MODULE_DURATION = 300;
 
     /**
      * ============================================================
@@ -219,10 +216,10 @@ class ModularExamController extends Controller
 
     /**
      * ============================================================
-     * CARGAR MÓDULOS DEL EXAMEN (MÉTODO PRIVADO)
+     * SELECCIONAR MÓDULOS ALEATORIOS (NUEVO MÉTODO)
      * ============================================================
      */
-    private function loadExamModules($languageId, &$totalDurationSeconds)
+    private function selectRandomModules($languageId)
     {
         $modulesOrder = [
             ['level' => 'A1', 'type' => 'listening'],
@@ -241,7 +238,7 @@ class ModularExamController extends Controller
         $totalDurationSeconds = 0;
         
         foreach ($modulesOrder as $index => $order) {
-            Log::info("Buscando módulo: level={$order['level']}, type={$order['type']}");
+            Log::info("Seleccionando módulo: level={$order['level']}, type={$order['type']}");
             
             $module = DB::table('modules')
                 ->where('language_id', $languageId)
@@ -252,7 +249,7 @@ class ModularExamController extends Controller
                 ->first();
             
             if (!$module) {
-                Log::warning("No se encontró módulo específico para: {$order['level']} - {$order['type']}, buscando alternativo");
+                Log::warning("No se encontró módulo específico, buscando alternativo del mismo nivel");
                 
                 $module = DB::table('modules')
                     ->where('language_id', $languageId)
@@ -262,18 +259,14 @@ class ModularExamController extends Controller
                     ->first();
                 
                 if ($module) {
-                    Log::info("Usando módulo alternativo: ID={$module->id}, type={$module->type} para requerido {$order['type']}");
+                    Log::info("Usando módulo alternativo: ID={$module->id}, type={$module->type}");
                 }
             }
             
             if ($module) {
                 $usedModuleIds[] = $module->id;
-                
-                // Obtener duración del módulo (priorizar duration_seconds, si no usar valor por defecto)
                 $moduleDuration = $module->duration_seconds ?? self::DEFAULT_MODULE_DURATION;
                 $totalDurationSeconds += $moduleDuration;
-                
-                Log::info("Módulo encontrado: ID={$module->id}, duración={$moduleDuration}s, total acumulado={$totalDurationSeconds}s");
                 
                 $questions = DB::table('module_questions')
                     ->where('module_id', $module->id)
@@ -314,14 +307,12 @@ class ModularExamController extends Controller
         }
         
         if (count($modulesData) < 8) {
-            Log::error("SOLO " . count($modulesData) . " DE 8 MÓDULOS CARGADOS. Faltan: " . implode(', ', $missingModules));
             return [
                 'success' => false,
                 'error' => 'No hay suficientes módulos para completar el examen',
                 'modules_loaded' => count($modulesData),
                 'modules_needed' => 8,
-                'missing_modules' => $missingModules,
-                'message' => 'Contacta al administrador: faltan módulos ' . implode(', ', $missingModules)
+                'missing_modules' => $missingModules
             ];
         }
         
@@ -339,22 +330,68 @@ class ModularExamController extends Controller
      * ============================================================
      */
     public function loadExam($assignmentId)
-    {
-        try {
-            Log::info("Cargando examen modular: {$assignmentId}");
+{
+    try {
+        Log::info("Cargando examen modular: {$assignmentId}");
+        
+        // 🔥 1. Verificar si el usuario está bloqueado
+        $user = auth()->user();
+        if ($user && $user->is_blocked) {
+            Log::warning("Intento de acceso de usuario bloqueado: {$user->id}");
+            return response()->json([
+                'error' => 'Tu cuenta ha sido bloqueada por violaciones de seguridad. Contacta al administrador.',
+                'blocked' => true,
+                'can_retry' => false
+            ], 403);
+        }
+        
+        $assignment = QuizAssignment::where('id', $assignmentId)
+            ->where('student_id', auth()->id())
+            ->where('test_type', 'ModularTest')
+            ->first();
+        
+        if (!$assignment) {
+            return response()->json(['error' => 'Examen no encontrado'], 404);
+        }
+        
+        $attempt = DB::table('modular_exam_attempts')
+            ->where('assignment_id', $assignmentId)
+            ->where('student_id', auth()->id())
+            ->first();
+        
+        // 🔥 2. Verificar si el examen ya fue invalidado
+        if ($attempt && $attempt->status === 'invalidated') {
+            Log::warning("Intento de acceder a examen invalidado: {$attempt->id}");
+            return response()->json([
+                'error' => 'Este examen ha sido invalidado por violaciones de seguridad. No puedes continuar.',
+                'status' => 'invalidated',
+                'can_retry' => false
+            ], 403);
+        }
+        
+        // 🔥 3. Verificar si el usuario tiene otros exámenes invalidados (exámenes previos)
+        $hasInvalidatedExams = DB::table('modular_exam_attempts')
+            ->where('student_id', auth()->id())
+            ->where('status', 'invalidated')
+            ->exists();
+        
+        if ($hasInvalidatedExams && !$attempt) {
+            Log::warning("Usuario con exámenes invalidados previos intenta crear nuevo: " . auth()->id());
+            return response()->json([
+                'error' => 'No puedes realizar nuevos exámenes porque tienes exámenes invalidados por violaciones de seguridad. Contacta al administrador.',
+                'blocked' => true,
+                'can_retry' => false
+            ], 403);
+        }
+        
+        $modulesData = [];
+        $totalDurationSeconds = 0;
+        
+        if (!$attempt) {
+            // ========== NUEVO EXAMEN ==========
+            Log::info("Creando nuevo examen - seleccionando módulos aleatorios");
             
-            $assignment = QuizAssignment::where('id', $assignmentId)
-                ->where('student_id', auth()->id())
-                ->where('test_type', 'ModularTest')
-                ->first();
-            
-            if (!$assignment) {
-                Log::error("Examen no encontrado: {$assignmentId}");
-                return response()->json(['error' => 'Examen no encontrado'], 404);
-            }
-            
-            // Cargar módulos y calcular duración total
-            $modulesResult = $this->loadExamModules($assignment->language_id, $totalDuration);
+            $modulesResult = $this->selectRandomModules($assignment->language_id);
             
             if (!$modulesResult['success']) {
                 return response()->json($modulesResult, 400);
@@ -363,74 +400,86 @@ class ModularExamController extends Controller
             $modulesData = $modulesResult['modules'];
             $totalDurationSeconds = $modulesResult['total_duration'];
             
-            Log::info("✅ 8 módulos cargados exitosamente. Duración total: {$totalDurationSeconds} segundos (" . round($totalDurationSeconds / 60) . " minutos)");
-            
-            // Buscar o crear attempt
-            $attempt = DB::table('modular_exam_attempts')
-                ->where('assignment_id', $assignmentId)
-                ->where('student_id', auth()->id())
-                ->first();
-            
-            if (!$attempt) {
-                $attemptId = DB::table('modular_exam_attempts')->insertGetId([
-                    'assignment_id' => $assignmentId,
-                    'student_id' => auth()->id(),
-                    'current_module_index' => 0,
-                    'status' => 'in_progress',
-                    'started_at' => now(),
-                    'expires_at' => now()->addSeconds($totalDurationSeconds),
-                    'time_left' => $totalDurationSeconds,
-                    'played_audios' => json_encode([]),
-                    'viewed_media' => json_encode([]),
-                    'answers' => json_encode([]),
-                    'total_score' => 0,
-                    'total_percentage' => 0,
-                    'created_at' => now(),
-                    'updated_at' => now()
-                ]);
-                
-                $attempt = DB::table('modular_exam_attempts')
-                    ->where('id', $attemptId)
-                    ->first();
-                    
-                Log::info("Nuevo attempt creado: {$attempt->id}, duración total: {$totalDurationSeconds}s");
-            } else {
-                Log::info("Attempt existente: {$attempt->id}, módulo actual: {$attempt->current_module_index}");
-            }
-            
-            // Calcular tiempo restante (priorizar time_left guardado)
-            $timeLeft = $attempt->time_left > 0 
-                ? $attempt->time_left 
-                : max(0, Carbon::parse($attempt->expires_at)->diffInSeconds(now(), false));
-            
-            $savedAnswers = json_decode($attempt->answers ?? '[]', true);
-            $playedAudios = json_decode($attempt->played_audios ?? '[]', true);
-            $viewedMedia = json_decode($attempt->viewed_media ?? '[]', true);
-            
-            return response()->json([
-                'success' => true,
-                'attempt_id' => $attempt->id,
-                'current_module' => $attempt->current_module_index,
-                'modules' => $modulesData,
-                'total_modules' => count($modulesData),
-                'total_duration_seconds' => $totalDurationSeconds,
-                'time_left' => $timeLeft,
-                'saved_answers' => $savedAnswers,
-                'played_audios' => $playedAudios,
-                'viewed_media' => $viewedMedia,
-                'status' => $attempt->status
+            $attemptId = DB::table('modular_exam_attempts')->insertGetId([
+                'assignment_id' => $assignmentId,
+                'student_id' => auth()->id(),
+                'current_module_index' => 0,
+                'status' => 'in_progress',
+                'started_at' => now(),
+                'expires_at' => now()->addSeconds($totalDurationSeconds),
+                'time_left' => $totalDurationSeconds,
+                'played_audios' => json_encode([]),
+                'viewed_media' => json_encode([]),
+                'assigned_modules' => json_encode($modulesData),
+                'answers' => json_encode([]),
+                'total_score' => 0,
+                'total_percentage' => 0,
+                'created_at' => now(),
+                'updated_at' => now()
             ]);
             
-        } catch (\Exception $e) {
-            Log::error('Error en loadExam: ' . $e->getMessage());
-            Log::error($e->getTraceAsString());
-            return response()->json(['error' => $e->getMessage()], 500);
+            $attempt = DB::table('modular_exam_attempts')
+                ->where('id', $attemptId)
+                ->first();
+                
+            Log::info("Nuevo attempt creado con módulos fijos: {$attempt->id}");
+            
+        } else {
+            // ========== EXAMEN EXISTENTE ==========
+            Log::info("Cargando examen existente - módulos guardados");
+            
+            $modulesData = json_decode($attempt->assigned_modules ?? '[]', true);
+            
+            if (empty($modulesData)) {
+                Log::warning("No hay módulos guardados, regenerando");
+                $modulesResult = $this->selectRandomModules($assignment->language_id);
+                $modulesData = $modulesResult['modules'];
+                $totalDurationSeconds = $modulesResult['total_duration'];
+                
+                DB::table('modular_exam_attempts')
+                    ->where('id', $attempt->id)
+                    ->update([
+                        'assigned_modules' => json_encode($modulesData),
+                        'updated_at' => now()
+                    ]);
+            } else {
+                foreach ($modulesData as $module) {
+                    $totalDurationSeconds += $module['duration_seconds'] ?? self::DEFAULT_MODULE_DURATION;
+                }
+            }
+            
+            Log::info("Módulos recuperados: " . count($modulesData));
         }
+        
+        // Calcular tiempo restante
+        $timeLeft = $attempt->time_left > 0 
+            ? $attempt->time_left 
+            : max(0, Carbon::parse($attempt->expires_at)->diffInSeconds(now(), false));
+        
+        return response()->json([
+            'success' => true,
+            'attempt_id' => $attempt->id,
+            'current_module' => $attempt->current_module_index,
+            'modules' => $modulesData,
+            'total_modules' => count($modulesData),
+            'total_duration_seconds' => $totalDurationSeconds,
+            'time_left' => $timeLeft,
+            'saved_answers' => json_decode($attempt->answers ?? '[]', true),
+            'played_audios' => json_decode($attempt->played_audios ?? '[]', true),
+            'viewed_media' => json_decode($attempt->viewed_media ?? '[]', true),
+            'status' => $attempt->status
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('Error en loadExam: ' . $e->getMessage());
+        Log::error($e->getTraceAsString());
+        return response()->json(['error' => $e->getMessage()], 500);
     }
+}
 
     /**
      * ============================================================
-     * SINCRONIZAR TIMER (llamado cada 5 segundos)
+     * SINCRONIZAR TIMER
      * POST /api/v1/student/modular-exam/sync-timer/{attemptId}
      * ============================================================
      */
@@ -584,7 +633,7 @@ class ModularExamController extends Controller
 
     /**
      * ============================================================
-     * GUARDAR RESPUESTAS DE UN MÓDULO
+     * GUARDAR RESPUESTAS
      * POST /api/v1/student/modular-exam/save/{attemptId}
      * ============================================================
      */
@@ -604,7 +653,6 @@ class ModularExamController extends Controller
                 ->first();
             
             if (!$attempt) {
-                Log::error("Intento no encontrado: {$attemptId}");
                 return response()->json(['error' => 'Intento no encontrado'], 404);
             }
             
@@ -618,12 +666,7 @@ class ModularExamController extends Controller
                     'updated_at' => now()
                 ]);
             
-            Log::info("Respuestas guardadas correctamente para módulo: {$request->module_id}");
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'Respuestas guardadas correctamente'
-            ]);
+            return response()->json(['success' => true, 'message' => 'Respuestas guardadas']);
             
         } catch (\Exception $e) {
             Log::error('Error en saveModuleAnswers: ' . $e->getMessage());
@@ -633,42 +676,28 @@ class ModularExamController extends Controller
 
     /**
      * ============================================================
-     * AVANZAR AL SIGUIENTE MÓDULO O FINALIZAR
+     * AVANZAR MÓDULO O FINALIZAR
      * POST /api/v1/student/modular-exam/next/{attemptId}
      * ============================================================
      */
     public function nextModule(Request $request, $attemptId)
     {
         try {
-            Log::info("=== nextModule llamado ===");
-            Log::info("Attempt ID: {$attemptId}");
-            
             $attempt = DB::table('modular_exam_attempts')
                 ->where('id', $attemptId)
                 ->where('student_id', auth()->id())
                 ->first();
             
             if (!$attempt) {
-                Log::error("Intento no encontrado: {$attemptId}");
                 return response()->json(['error' => 'Intento no encontrado'], 404);
             }
             
             $currentIndex = $attempt->current_module_index;
-            $totalModules = 8;
             $nextIndex = $currentIndex + 1;
-            
-            Log::info("Módulo actual: {$currentIndex}, Siguiente: {$nextIndex}, Total: {$totalModules}");
+            $totalModules = 8;
             
             if ($nextIndex >= $totalModules) {
-                Log::info("=== FINALIZANDO EXAMEN ===");
-                
                 $results = $this->calculateResults($attemptId);
-                
-                Log::info("Resultados calculados:", [
-                    'total_score' => $results['total_score'],
-                    'total_points' => $results['total_points'],
-                    'total_percentage' => $results['total_percentage']
-                ]);
                 
                 DB::table('modular_exam_attempts')
                     ->where('id', $attemptId)
@@ -688,16 +717,12 @@ class ModularExamController extends Controller
                     'updated_at' => now()
                 ]);
                 
-                Log::info("Examen finalizado. Aprobado: " . ($results['total_percentage'] >= 60 ? 'SÍ' : 'NO'));
-                
                 return response()->json([
                     'success' => true,
                     'completed' => true,
                     'results' => $results
                 ]);
-            } 
-            
-            Log::info("=== AVANZANDO AL MÓDULO {$nextIndex} ===");
+            }
             
             DB::table('modular_exam_attempts')
                 ->where('id', $attemptId)
@@ -709,28 +734,24 @@ class ModularExamController extends Controller
             return response()->json([
                 'success' => true,
                 'completed' => false,
-                'next_module' => $nextIndex,
-                'message' => "Avanzando al módulo {$nextIndex}"
+                'next_module' => $nextIndex
             ]);
             
         } catch (\Exception $e) {
             Log::error('Error en nextModule: ' . $e->getMessage());
-            Log::error($e->getTraceAsString());
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
 
     /**
      * ============================================================
-     * FINALIZAR EXAMEN MODULAR
+     * FINALIZAR EXAMEN
      * POST /api/v1/student/modular-exam/finish/{attemptId}
      * ============================================================
      */
     public function finishExam($attemptId)
     {
         try {
-            Log::info("Finalizando examen manualmente: {$attemptId}");
-            
             $attempt = DB::table('modular_exam_attempts')
                 ->where('id', $attemptId)
                 ->where('student_id', auth()->id())
@@ -760,10 +781,7 @@ class ModularExamController extends Controller
                 'updated_at' => now()
             ]);
             
-            return response()->json([
-                'success' => true,
-                'results' => $results
-            ]);
+            return response()->json(['success' => true, 'results' => $results]);
             
         } catch (\Exception $e) {
             Log::error('Error en finishExam: ' . $e->getMessage());
@@ -777,56 +795,82 @@ class ModularExamController extends Controller
      * POST /api/v1/student/modular-exam/invalidate/{attemptId}
      * ============================================================
      */
-    public function invalidateExam($attemptId)
-    {
-        try {
-            $attempt = DB::table('modular_exam_attempts')
-                ->where('id', $attemptId)
-                ->where('student_id', auth()->id())
-                ->first();
-            
-            if (!$attempt) {
-                return response()->json(['error' => 'Intento no encontrado'], 404);
-            }
-            
-            DB::table('modular_exam_attempts')
-                ->where('id', $attemptId)
-                ->update([
-                    'status' => 'invalidated',
-                    'completed_at' => now(),
-                    'updated_at' => now()
-                ]);
-            
-            QuizAssignment::where('id', $attempt->assignment_id)->update([
-                'attended' => 1,
-                'active' => 0,
+    /**
+ * Invalidar examen por expulsión (bloquea el examen y al usuario)
+ * POST /api/v1/student/modular-exam/invalidate/{attemptId}
+ */
+public function invalidateExam(Request $request, $attemptId)
+{
+    try {
+        $attempt = DB::table('modular_exam_attempts')
+            ->where('id', $attemptId)
+            ->where('student_id', auth()->id())
+            ->first();
+        
+        if (!$attempt) {
+            return response()->json(['error' => 'Intento no encontrado'], 404);
+        }
+        
+        // 🔥 1. Actualizar estado del examen a 'invalidated'
+        DB::table('modular_exam_attempts')
+            ->where('id', $attemptId)
+            ->update([
+                'status' => 'invalidated',
+                'completed_at' => now(),
                 'updated_at' => now()
             ]);
-            
-            return response()->json(['success' => true]);
-            
-        } catch (\Exception $e) {
-            Log::error('Error en invalidateExam: ' . $e->getMessage());
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
+        
+        // 🔥 2. Actualizar el assignment
+        QuizAssignment::where('id', $attempt->assignment_id)->update([
+            'attended' => 1,
+            'active' => 0,
+            'passed' => 0,
+            'updated_at' => now()
+        ]);
+        
+        // 🔥 3. Bloquear al usuario (opcional, si tienes el campo is_blocked)
+        // Si agregaste el campo is_blocked a users:
+        DB::table('users')
+            ->where('id', auth()->id())
+            ->update([
+                'is_blocked' => true,
+                'blocked_at' => now(),
+                'blocked_reason' => $request->reason ?? 'Examen modular invalidado por violaciones de seguridad'
+            ]);
+        
+        // 🔥 4. Invalidar todos los tokens del usuario
+        DB::table('personal_access_tokens')
+            ->where('tokenable_id', auth()->id())
+            ->delete();
+        
+        Log::warning("Usuario " . auth()->id() . " - Examen {$attemptId} invalidado", [
+            'reason' => $request->reason
+        ]);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Examen invalidado',
+            'status' => 'invalidated'
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('Error en invalidateExam: ' . $e->getMessage());
+        return response()->json(['error' => $e->getMessage()], 500);
     }
+}
 
     /**
      * ============================================================
-     * CALCULAR RESULTADOS DEL EXAMEN
+     * CALCULAR RESULTADOS
      * ============================================================
      */
     private function calculateResults($attemptId)
     {
-        Log::info("Calculando resultados para attempt: {$attemptId}");
-        
         $attempt = DB::table('modular_exam_attempts')
             ->where('id', $attemptId)
             ->first();
         
         $answers = json_decode($attempt->answers ?? '[]', true);
-        
-        Log::info("Respuestas encontradas para " . count($answers) . " módulos");
         
         $results = [
             'total_score' => 0,
@@ -868,8 +912,6 @@ class ModularExamController extends Controller
                 
                 $percentage = $moduleTotal > 0 ? round(($moduleScore / $moduleTotal) * 100) : 0;
                 
-                Log::info("Módulo {$module->title}: {$moduleScore}/{$moduleTotal} = {$percentage}%");
-                
                 $results['details'][] = [
                     'module_id' => $module->id,
                     'title' => $module->title,
@@ -891,28 +933,23 @@ class ModularExamController extends Controller
         
         foreach ($results['by_level'] as $level => $data) {
             $results['by_level'][$level]['percentage'] = $data['total'] > 0 
-                ? round(($data['score'] / $data['total']) * 100) 
-                : 0;
+                ? round(($data['score'] / $data['total']) * 100) : 0;
         }
         
         foreach ($results['by_type'] as $type => $data) {
             $results['by_type'][$type]['percentage'] = $data['total'] > 0 
-                ? round(($data['score'] / $data['total']) * 100) 
-                : 0;
+                ? round(($data['score'] / $data['total']) * 100) : 0;
         }
         
         $results['total_percentage'] = $results['total_points'] > 0 
-            ? round(($results['total_score'] / $results['total_points']) * 100) 
-            : 0;
-        
-        Log::info("RESULTADO FINAL: {$results['total_score']}/{$results['total_points']} = {$results['total_percentage']}%");
+            ? round(($results['total_score'] / $results['total_points']) * 100) : 0;
         
         return $results;
     }
 
     /**
      * ============================================================
-     * CONVERTIR NÚMERO DE OPCIÓN A LETRA
+     * CONVERTIR NÚMERO A LETRA
      * ============================================================
      */
     private function getOptionLetter($number)
@@ -923,28 +960,23 @@ class ModularExamController extends Controller
 
     /**
      * ============================================================
-     * OBTENER RESULTADOS DE UN INTENTO
+     * OBTENER RESULTADOS
      * GET /api/v1/student/modular-results/{attemptId}
      * ============================================================
      */
     public function getResults($attemptId)
     {
         try {
-            Log::info("Obteniendo resultados para attempt: {$attemptId}");
-            
             $attempt = DB::table('modular_exam_attempts')
                 ->where('id', $attemptId)
                 ->where('student_id', auth()->id())
                 ->first();
             
             if (!$attempt) {
-                Log::error("Resultado no encontrado: {$attemptId}");
                 return response()->json(['error' => 'Resultado no encontrado'], 404);
             }
             
-            $results = json_decode($attempt->results_data, true);
-            
-            return response()->json($results);
+            return response()->json(json_decode($attempt->results_data, true));
             
         } catch (\Exception $e) {
             Log::error('Error en getResults: ' . $e->getMessage());
@@ -954,7 +986,7 @@ class ModularExamController extends Controller
 
     /**
      * ============================================================
-     * OBTENER HISTORIAL DE EXÁMENES MODULARES
+     * HISTORIAL DE EXÁMENES
      * GET /api/v1/student/modular-history
      * ============================================================
      */
@@ -962,7 +994,6 @@ class ModularExamController extends Controller
     {
         try {
             $user = auth()->user();
-            Log::info("Obteniendo historial para usuario: {$user->id}");
             
             $attempts = DB::table('modular_exam_attempts')
                 ->join('quiz_assignments', 'modular_exam_attempts.assignment_id', '=', 'quiz_assignments.id')
@@ -978,44 +1009,31 @@ class ModularExamController extends Controller
                 )
                 ->get();
             
-            $history = [];
-            foreach ($attempts as $attempt) {
-                $history[] = [
-                    'attempt_id' => $attempt->attempt_id,
-                    'language_name' => $attempt->language_name,
-                    'date' => Carbon::parse($attempt->completed_at)->format('d/m/Y H:i'),
-                    'total_percentage' => $attempt->total_percentage,
-                    'passed' => $attempt->total_percentage >= 60
-                ];
-            }
-            
-            Log::info("Historial encontrado: " . count($history) . " registros");
-            
-            return response()->json([
-                'success' => true,
-                'attempts' => $history
+            $history = $attempts->map(fn($a) => [
+                'attempt_id' => $a->attempt_id,
+                'language_name' => $a->language_name,
+                'date' => Carbon::parse($a->completed_at)->format('d/m/Y H:i'),
+                'total_percentage' => $a->total_percentage,
+                'passed' => $a->total_percentage >= 60
             ]);
+            
+            return response()->json(['success' => true, 'attempts' => $history]);
             
         } catch (\Exception $e) {
             Log::error('Error en getModularHistory: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'attempts' => []
-            ], 500);
+            return response()->json(['success' => false, 'attempts' => []], 500);
         }
     }
 
     /**
      * ============================================================
-     * LISTA DE EXÁMENES MODULARES COMPLETADOS (ADMIN)
+     * ADMIN - LISTA DE EXÁMENES
      * GET /api/v1/admin/modular-reports
      * ============================================================
      */
     public function adminIndex()
     {
         try {
-            Log::info("Admin obteniendo lista de exámenes modulares");
-            
             $attempts = DB::table('modular_exam_attempts')
                 ->join('users', 'modular_exam_attempts.student_id', '=', 'users.id')
                 ->join('quiz_assignments', 'modular_exam_attempts.assignment_id', '=', 'quiz_assignments.id')
@@ -1049,12 +1067,10 @@ class ModularExamController extends Controller
                 ];
             });
             
-            Log::info("Total exámenes encontrados: " . $processed->count());
-            
             return response()->json($processed);
             
         } catch (\Exception $e) {
-            Log::error('Error en adminIndex modular reports: ' . $e->getMessage());
+            Log::error('Error en adminIndex: ' . $e->getMessage());
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }

@@ -116,6 +116,12 @@ const routes = [
                 component: () => import('@/components/Admins/Reports/AuditLogs.vue'),
                 meta: { role: 'admin', title: 'Auditoría de Actividad' }
             },
+{
+    path: 'blocked-users',
+    name: 'admin.blocked.users',
+    component: () => import('@/components/Admins/Assignments/BlockedUsersView.vue'),
+    meta: { requiresAuth: true, role: 'admin', title: 'Usuarios Bloqueados' }
+},           
             // Reporte de Violaciones de Seguridad
             {
                 path: 'admin/security-reports',

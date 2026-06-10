@@ -9,8 +9,6 @@ class SecurityLog extends Model
 {
     /**
      * Los atributos que son asignables masivamente.
-     *
-     * @var array
      */
     protected $fillable = [
         'user_id',
@@ -24,8 +22,6 @@ class SecurityLog extends Model
     
     /**
      * Los atributos que deben ser convertidos a tipos nativos.
-     *
-     * @var array
      */
     protected $casts = [
         'created_at' => 'datetime',
@@ -37,6 +33,7 @@ class SecurityLog extends Model
      * Tipos de eventos de seguridad disponibles
      */
     const EVENT_TYPES = [
+        // Eventos originales
         'tab_switch' => 'Cambio de pestaña/ventana',
         'mouse_leave' => 'Salida del área del examen',
         'copy_attempt' => 'Intento de copiar',
@@ -50,13 +47,25 @@ class SecurityLog extends Model
         'window_resize' => 'Cambio de tamaño de ventana',
         'fullscreen_exit' => 'Salida de pantalla completa',
         'fullscreen_enabled' => 'Pantalla completa activada',
-        'exam_invalidated' => 'Examen invalidado'
+        'exam_invalidated' => 'Examen invalidado',
+        
+        // Eventos del frontend (bloqueos)
+        'f12_blocked' => 'Tecla F12 bloqueada',
+        'devtools_blocked' => 'Intento de abrir DevTools bloqueado',
+        'view_source_blocked' => 'Intento de ver código fuente bloqueado',
+        'reload_blocked' => 'Intento de recargar página bloqueado',
+        'screenshot_blocked' => 'Intento de captura de pantalla bloqueado',
+        'print_blocked' => 'Intento de imprimir bloqueado',
+        'right_click_blocked' => 'Clic derecho bloqueado',
+        'window_blur' => 'Pérdida de foco de ventana',
+        'tab_switch_blocked' => 'Cambio de pestaña bloqueado',
     ];
     
     /**
      * Límites de violaciones por tipo de evento
      */
     const EVENT_LIMITS = [
+        // Eventos originales
         'tab_switch' => 3,
         'mouse_leave' => 5,
         'copy_attempt' => 3,
@@ -68,24 +77,29 @@ class SecurityLog extends Model
         'drag_attempt' => 5,
         'drop_attempt' => 3,
         'window_resize' => 10,
-        'fullscreen_exit' => 3
+        'fullscreen_exit' => 3,
+        
+        // Eventos del frontend (bloqueos)
+        'f12_blocked' => 2,
+        'devtools_blocked' => 2,
+        'view_source_blocked' => 2,
+        'reload_blocked' => 1,
+        'screenshot_blocked' => 3,
+        'print_blocked' => 2,
+        'right_click_blocked' => 5,
+        'window_blur' => 3,
+        'tab_switch_blocked' => 3,
     ];
     
     // ============================================================
     // RELACIONES
     // ============================================================
     
-    /**
-     * Relación con el usuario
-     */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
     
-    /**
-     * Relación con el intento de examen
-     */
     public function examAttempt(): BelongsTo
     {
         return $this->belongsTo(ExamAttempt::class, 'exam_attempt_id');
@@ -95,59 +109,38 @@ class SecurityLog extends Model
     // SCOPES
     // ============================================================
     
-    /**
-     * Scope para filtrar por examen
-     */
     public function scopeForExam($query, $examAttemptId)
     {
         return $query->where('exam_attempt_id', $examAttemptId);
     }
     
-    /**
-     * Scope para filtrar por tipo de evento
-     */
     public function scopeOfType($query, $eventType)
     {
         return $query->where('event_type', $eventType);
     }
     
-    /**
-     * Scope para filtrar por usuario
-     */
     public function scopeForUser($query, $userId)
     {
         return $query->where('user_id', $userId);
     }
     
-    /**
-     * Scope para violaciones críticas (las que pueden invalidar el examen)
-     */
     public function scopeCriticalViolations($query)
     {
         return $query->whereIn('event_type', [
-            'tab_switch',
-            'devtools_opened',
-            'screenshot_attempt',
-            'mouse_leave',
-            'copy_attempt'
+            'tab_switch', 'devtools_opened', 'screenshot_attempt', 
+            'mouse_leave', 'copy_attempt', 'f12_blocked', 'devtools_blocked'
         ]);
     }
     
-    /**
-     * Scope para eventos en los últimos minutos
-     */
     public function scopeLastMinutes($query, $minutes = 30)
     {
         return $query->where('created_at', '>', now()->subMinutes($minutes));
     }
     
     // ============================================================
-    // MÉTODOS ESTÁTICOS UTILITARIOS
+    // MÉTODOS ESTÁTICOS
     // ============================================================
     
-    /**
-     * Obtener conteo de violaciones por tipo para un examen
-     */
     public static function getViolationCount($examAttemptId, $eventType = null)
     {
         $query = self::where('exam_attempt_id', $examAttemptId);
@@ -161,9 +154,6 @@ class SecurityLog extends Model
         return $query->count();
     }
     
-    /**
-     * Obtener conteo detallado de violaciones por tipo
-     */
     public static function getViolationStats($examAttemptId)
     {
         return self::where('exam_attempt_id', $examAttemptId)
@@ -174,9 +164,6 @@ class SecurityLog extends Model
             ->toArray();
     }
     
-    /**
-     * Verificar si debe invalidar el examen según el tipo de violación
-     */
     public static function shouldInvalidateExam($examAttemptId, $eventType = null)
     {
         if ($eventType) {
@@ -188,7 +175,6 @@ class SecurityLog extends Model
             return $violationCount >= $limit;
         }
         
-        // Verificar cualquier violación crítica
         $criticalViolations = self::where('exam_attempt_id', $examAttemptId)
             ->criticalViolations()
             ->select('event_type', \DB::raw('count(*) as total'))
@@ -205,9 +191,6 @@ class SecurityLog extends Model
         return false;
     }
     
-    /**
-     * Registrar un evento de seguridad
-     */
     public static function logEvent($examAttemptId, $eventType, $details = null)
     {
         $user = auth()->user();
@@ -216,7 +199,6 @@ class SecurityLog extends Model
             return null;
         }
         
-        // Contar violaciones recientes del mismo tipo
         $violationCount = self::where('exam_attempt_id', $examAttemptId)
             ->where('event_type', $eventType)
             ->where('created_at', '>', now()->subMinutes(30))
@@ -237,56 +219,35 @@ class SecurityLog extends Model
     // MÉTODOS DE INSTANCIA
     // ============================================================
     
-    /**
-     * Obtener el nombre legible del tipo de evento
-     */
     public function getEventTypeNameAttribute(): string
     {
         return self::EVENT_TYPES[$this->event_type] ?? $this->event_type;
     }
     
-    /**
-     * Verificar si este evento es una violación crítica
-     */
     public function isCriticalViolation(): bool
     {
         return in_array($this->event_type, [
-            'tab_switch',
-            'devtools_opened',
-            'screenshot_attempt',
-            'mouse_leave',
-            'copy_attempt'
+            'tab_switch', 'devtools_opened', 'screenshot_attempt', 
+            'mouse_leave', 'copy_attempt', 'f12_blocked', 'devtools_blocked'
         ]);
     }
     
-    /**
-     * Obtener el límite de violaciones para este tipo de evento
-     */
     public function getLimitAttribute(): int
     {
         return self::EVENT_LIMITS[$this->event_type] ?? 3;
     }
     
-    /**
-     * Verificar si ya se alcanzó el límite de violaciones
-     */
     public function hasReachedLimit(): bool
     {
         return ($this->violation_count ?? 1) >= $this->limit;
     }
     
-    /**
-     * Obtener las advertencias restantes
-     */
     public function getRemainingWarningsAttribute(): int
     {
         $remaining = $this->limit - ($this->violation_count ?? 1);
         return max(0, $remaining);
     }
     
-    /**
-     * Formatear la fecha de creación
-     */
     public function getFormattedCreatedAtAttribute(): string
     {
         return $this->created_at->format('d/m/Y H:i:s');

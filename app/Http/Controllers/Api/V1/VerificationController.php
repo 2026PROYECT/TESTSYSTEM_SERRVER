@@ -13,9 +13,8 @@ class VerificationController extends Controller
     public function show($uuid): JsonResponse
     {
         try {
-            $verification = Verification::with([
-                'verifiable.student.studentProfile.career'
-            ])->where('uuid', $uuid)->first();
+            // 🔥 ELIMINAR EL WITH PROBLEMÁTICO - Buscar sin relaciones
+            $verification = Verification::where('uuid', $uuid)->first();
 
             if (!$verification) {
                 return response()->json([
@@ -23,6 +22,9 @@ class VerificationController extends Controller
                     'message' => 'Documento no encontrado'
                 ], 404);
             }
+
+            // Incrementar contador de escaneos
+            $verification->increment('scans_count');
 
             // Variables por defecto
             $responseData = [
@@ -50,10 +52,12 @@ class VerificationController extends Controller
 
                 /**
                  * ==========================================================
-                 * EXAMEN MODULAR INDIVIDUAL
+                 * 1. EXAMEN MODULAR INDIVIDUAL (Certificado)
                  * ==========================================================
                  */
                 case 'MODULAR_EXAM':
+                    // Cargar relaciones solo aquí
+                    $verification->load('verifiable.student.career');
                     $source = $verification->verifiable;
                     if (!$source) {
                         return response()->json([
@@ -72,10 +76,10 @@ class VerificationController extends Controller
                     if ($studentUser) {
                         $responseData['student'] = [
                             'full_name' => trim("{$studentUser->lastname} {$studentUser->name} {$studentUser->surname}"),
-                            'id_card' => $studentUser->studentProfile->id_number ?? 'N/D',
+                            'id_card' => $studentUser->id_number ?? 'N/D',
                             'name' => $studentUser->name ?? 'N/D',
                             'lastname' => $studentUser->lastname ?? 'N/D',
-                            'career' => $studentUser->studentProfile->career->name ?? 'Carrera no registrada'
+                            'career' => $studentUser->career->name ?? 'Carrera no registrada'
                         ];
                     }
                     
@@ -117,10 +121,11 @@ class VerificationController extends Controller
 
                 /**
                  * ==========================================================
-                 * EXAMEN COMPUTARIZADO INDIVIDUAL (COMP_EXAM)
+                 * 2. EXAMEN COMPUTARIZADO INDIVIDUAL (Certificado)
                  * ==========================================================
                  */
                 case 'COMP_EXAM':
+                    $verification->load('verifiable.student.career');
                     $source = $verification->verifiable;
                     if (!$source) {
                         return response()->json([
@@ -139,10 +144,10 @@ class VerificationController extends Controller
                     if ($studentUser) {
                         $responseData['student'] = [
                             'full_name' => trim("{$studentUser->lastname} {$studentUser->name} {$studentUser->surname}"),
-                            'id_card' => $studentUser->studentProfile->id_number ?? 'N/D',
+                            'id_card' => $studentUser->id_number ?? 'N/D',
                             'name' => $studentUser->name ?? 'N/D',
                             'lastname' => $studentUser->lastname ?? 'N/D',
-                            'career' => $studentUser->studentProfile->career->name ?? 'Carrera no registrada'
+                            'career' => $studentUser->career->name ?? 'Carrera no registrada'
                         ];
                     }
                     
@@ -150,7 +155,6 @@ class VerificationController extends Controller
                     $score = $source->score ?? 0;
                     $passed = $score >= 60;
                     
-                    // Calcular estadísticas de listening/reading
                     $l_correct = 0;
                     $l_total = 0;
                     $r_correct = 0;
@@ -184,7 +188,130 @@ class VerificationController extends Controller
 
                 /**
                  * ==========================================================
-                 * REPORTE GENERAL MODULAR
+                 * 3. EXAMEN ORAL INDIVIDUAL (Certificado)
+                 * ==========================================================
+                 */
+                case 'ORAL_EXAM':
+                    $verification->load('verifiable.student.career');
+                    $source = $verification->verifiable;
+                    if (!$source) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Datos de examen no encontrados'
+                        ], 404);
+                    }
+
+                    $responseData['header'] = [
+                        'title' => 'Evaluación Oral Válida',
+                        'icon' => '🛡️',
+                        'color' => 'emerald'
+                    ];
+                    
+                    $studentUser = $source->student;
+                    if ($studentUser) {
+                        $responseData['student'] = [
+                            'full_name' => trim("{$studentUser->lastname} {$studentUser->name}"),
+                            'id_card' => $studentUser->id_number ?? 'N/D',
+                            'name' => $studentUser->name ?? 'N/D',
+                            'lastname' => $studentUser->lastname ?? 'N/D',
+                            'career' => $studentUser->career->name ?? 'Carrera no registrada'
+                        ];
+                    }
+                    
+                    $responseData['stats'] = [
+                        ['label' => 'Nota Final', 'value' => number_format($source->final_score, 2)],
+                        ['label' => 'Nivel', 'value' => $source->final_level ?? 'N/E'],
+                    ];
+                    break;
+
+                /**
+                 * ==========================================================
+                 * 4. REPORTE DE USUARIO BLOQUEADO (MODULAR)
+                 * ==========================================================
+                 */
+                case 'MODULAR_USER_REPORT':
+                    $meta = $verification->metadata;
+                    if (is_string($meta)) {
+                        $meta = json_decode($meta, true);
+                    }
+                    if (!is_array($meta)) {
+                        $meta = [];
+                    }
+                    
+                    $responseData['header'] = [
+                        'title' => 'Reporte de Usuario Bloqueado - Examen Modular',
+                        'icon' => '🚫',
+                        'color' => 'red'
+                    ];
+                    
+                    $responseData['student'] = [
+                        'full_name' => $meta['user_name'] ?? 'No especificado',
+                        'id_card' => 'N/A',
+                        'name' => $meta['user_name'] ?? 'N/A',
+                        'lastname' => '',
+                        'career' => 'Sistema de Evaluación'
+                    ];
+                    
+                    $invalidatedExams = $meta['invalidated_exams'] ?? [];
+                    $totalViolations = $meta['total_violations'] ?? 0;
+                    
+                    $responseData['stats'] = [
+                        ['label' => '👤 Usuario', 'value' => $meta['user_email'] ?? 'N/A'],
+                        ['label' => '🚫 Exámenes Invalidados', 'value' => (string)count($invalidatedExams)],
+                        ['label' => '⚠️ Total Violaciones', 'value' => (string)$totalViolations],
+                        ['label' => '📅 Fecha Reporte', 'value' => $verification->created_at->format('d/m/Y H:i')],
+                        ['label' => '🔒 Estado', 'value' => 'DOCUMENTO DE SEGURIDAD'],
+                    ];
+                    
+                    $responseData['students_list'] = array_map(function($exam) {
+                        return [
+                            'attempt_id' => $exam['attempt_id'],
+                            'started_at' => date('d/m/Y H:i', strtotime($exam['started_at'])),
+                            'violations_count' => $exam['violations_count'],
+                            'status' => 'INVALIDADO'
+                        ];
+                    }, $invalidatedExams);
+                    break;
+
+                /**
+                 * ==========================================================
+                 * 5. REPORTE DE EXAMEN MODULAR INVALIDADO (Individual)
+                 * ==========================================================
+                 */
+                case 'MODULAR_EXAM_REPORT':
+                    $meta = $verification->metadata;
+                    if (is_string($meta)) {
+                        $meta = json_decode($meta, true);
+                    }
+                    if (!is_array($meta)) {
+                        $meta = [];
+                    }
+                    
+                    $responseData['header'] = [
+                        'title' => 'Reporte de Examen Modular Invalidado',
+                        'icon' => '📘',
+                        'color' => 'red'
+                    ];
+                    
+                    $responseData['student'] = [
+                        'full_name' => $meta['student_name'] ?? 'No especificado',
+                        'id_card' => 'N/A',
+                        'name' => $meta['student_name'] ?? 'N/A',
+                        'lastname' => '',
+                        'career' => 'Sistema de Evaluación'
+                    ];
+                    
+                    $responseData['stats'] = [
+                        ['label' => '📝 ID Examen', 'value' => (string)($meta['attempt_id'] ?? 'N/A')],
+                        ['label' => '⚠️ Total Violaciones', 'value' => (string)($meta['violations_count'] ?? 0)],
+                        ['label' => '📅 Fecha Reporte', 'value' => $verification->created_at->format('d/m/Y H:i')],
+                        ['label' => '🔒 Estado', 'value' => 'EXAMEN INVALIDADO'],
+                    ];
+                    break;
+
+                /**
+                 * ==========================================================
+                 * 6. REPORTE GENERAL MODULAR
                  * ==========================================================
                  */
                 case 'MODULAR_GENERAL_REPORT':
@@ -219,7 +346,7 @@ class VerificationController extends Controller
 
                 /**
                  * ==========================================================
-                 * REPORTE GENERAL COMPUTARIZADO (COMP_GENERAL_REPORT)
+                 * 7. REPORTE GENERAL COMPUTARIZADO
                  * ==========================================================
                  */
                 case 'COMP_GENERAL_REPORT':
@@ -254,7 +381,7 @@ class VerificationController extends Controller
 
                 /**
                  * ==========================================================
-                 * REPORTES GENERALES (GLOBAL_REPORT, ORAL_ONLY_REPORT)
+                 * 8. REPORTES GENERALES (GLOBAL_REPORT, ORAL_ONLY_REPORT)
                  * ==========================================================
                  */
                 case 'GLOBAL_REPORT':
@@ -324,44 +451,7 @@ class VerificationController extends Controller
 
                 /**
                  * ==========================================================
-                 * EXAMEN ORAL INDIVIDUAL
-                 * ==========================================================
-                 */
-                case 'ORAL_EXAM':
-                    $source = $verification->verifiable;
-                    if (!$source) {
-                        return response()->json([
-                            'success' => false,
-                            'message' => 'Datos de examen no encontrados'
-                        ], 404);
-                    }
-
-                    $responseData['header'] = [
-                        'title' => 'Evaluación Oral Válida',
-                        'icon' => '🛡️',
-                        'color' => 'emerald'
-                    ];
-                    
-                    $studentUser = $source->student;
-                    if ($studentUser) {
-                        $responseData['student'] = [
-                            'full_name' => trim("{$studentUser->lastname} {$studentUser->name}"),
-                            'id_card' => $studentUser->studentProfile->id_number ?? 'N/D',
-                            'name' => $studentUser->name ?? 'N/D',
-                            'lastname' => $studentUser->lastname ?? 'N/D',
-                            'career' => $studentUser->studentProfile->career->name ?? 'Carrera no registrada'
-                        ];
-                    }
-                    
-                    $responseData['stats'] = [
-                        ['label' => 'Nota Final', 'value' => number_format($source->final_score, 2)],
-                        ['label' => 'Nivel', 'value' => $source->final_level ?? 'N/E'],
-                    ];
-                    break;
-
-                /**
-                 * ==========================================================
-                 * CASO POR DEFECTO
+                 * 9. CASO POR DEFECTO
                  * ==========================================================
                  */
                 default:

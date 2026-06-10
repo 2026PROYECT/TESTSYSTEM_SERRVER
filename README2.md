@@ -75,3 +75,12 @@ Write-Host "🔹 Subiendo al remoto..."
 git push origin main
 
 Write-Host "✅ Proceso completado. Archivos de storage/app/public ahora están en el repo."
+
+quitar el link 
+$symlink = "public\storage"
+
+if (Test-Path $symlink) {
+    Remove-Item $symlink -Force
+    Write-Host "✅ Enlace simbólico eliminado: $symlink"
+} else {
+    Write-Host "⚠️ No existe el enlace simbólico en $symlink"

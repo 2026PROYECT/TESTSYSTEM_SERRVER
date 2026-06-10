@@ -111,30 +111,30 @@
             </div>
 
             <div class="section-header pt-4">📊 Reportes</div>
-<div class="menu-group-vm">
-    <button @click="toggleMenu('reports')" class="nav-dropdown-btn-vm" :class="{ 'active-group': openMenus.reports }">
-        <span class="flex items-center gap-3"><span class="icon">📊</span> Reportes Académicos</span>
-        <span class="arrow" :class="{ 'rotate': openMenus.reports }">▾</span>
-    </button>
-    <transition name="expand">
-        <div v-show="openMenus.reports" class="submenu-vm">
-            <router-link :to="{ name: 'admin.reports' }" class="sub-nav-link-vm" active-class="active-sub">
-                Resumen General
-            </router-link>
-            <router-link :to="{ name: 'admin.reports.computerized' }" class="sub-nav-link-vm" active-class="active-sub">
-                💻 Exámenes Computarizados
-            </router-link>
-            <router-link :to="{ name: 'admin.oral.reports' }" class="sub-nav-link-vm" active-class="active-sub">
-                🗣️ Exámenes Orales
-            </router-link>
-            <!-- 🔥 NUEVO: Agregar aquí -->
-            <router-link :to="{ name: 'admin.modular.reports' }" class="sub-nav-link-vm" active-class="active-sub">
-                📦 Exámenes Modulares
-            </router-link>
-        </div>
-    </transition>
-</div>
+            <div class="menu-group-vm">
+              <button @click="toggleMenu('reports')" class="nav-dropdown-btn-vm" :class="{ 'active-group': openMenus.reports }">
+                <span class="flex items-center gap-3"><span class="icon">📊</span> Reportes Académicos</span>
+                <span class="arrow" :class="{ 'rotate': openMenus.reports }">▾</span>
+              </button>
+              <transition name="expand">
+                <div v-show="openMenus.reports" class="submenu-vm">
+                  <router-link :to="{ name: 'admin.reports' }" class="sub-nav-link-vm" active-class="active-sub">
+                    Resumen General
+                  </router-link>
+                  <router-link :to="{ name: 'admin.reports.computerized' }" class="sub-nav-link-vm" active-class="active-sub">
+                    💻 Exámenes Computarizados
+                  </router-link>
+                  <router-link :to="{ name: 'admin.oral.reports' }" class="sub-nav-link-vm" active-class="active-sub">
+                    🗣️ Exámenes Orales
+                  </router-link>
+                  <router-link :to="{ name: 'admin.modular.reports' }" class="sub-nav-link-vm" active-class="active-sub">
+                    📦 Exámenes Modulares
+                  </router-link>
+                </div>
+              </transition>
+            </div>
 
+            <!-- ========== ASIGNACIONES (con Usuarios Bloqueados) ========== -->
             <div class="section-header pt-4">🔑 Asignaciones</div>
             <div class="menu-group-vm">
               <button @click="toggleMenu('assignments')" class="nav-dropdown-btn-vm" :class="{ 'active-group': openMenus.assignments }">
@@ -155,10 +155,18 @@
                   <router-link :to="{ name: 'assignments.special-slots' }" class="sub-nav-link-vm" active-class="active-sub">
                     ⭐ Horarios Especiales
                   </router-link>
+                  
+                  <!-- 🔥 NUEVA SECCIÓN: Usuarios Bloqueados -->
+                  <div class="submenu-divider"></div>
+                  <div class="submenu-label">🚫 BLOQUEOS</div>
+                  <router-link :to="{ name: 'admin.blocked.users' }" class="sub-nav-link-vm" active-class="active-sub">
+                    👤 Usuarios Bloqueados
+                  </router-link>
                 </div>
               </transition>
             </div>
 
+            <!-- ========== HERRAMIENTAS ========== -->
             <div class="section-header pt-4">🛠️ Herramientas</div>
             <div class="menu-group-vm">
               <button @click="toggleMenu('tools')" class="nav-dropdown-btn-vm" :class="{ 'active-group': openMenus.tools }">
@@ -201,40 +209,39 @@
             </router-link>
           </template>
 
-<!-- ========== MENÚ STUDENT ========== -->
-<template v-else-if="user.role === 'student'">
-    <div class="section-header pt-4">📊 Mis Resultados</div>
-    <div class="menu-group-vm">
-        <button @click="toggleMenu('stResults')" class="nav-dropdown-btn-vm" :class="{ 'active-group': openMenus.stResults }">
-            <span class="flex items-center gap-3"><span class="icon">📈</span> Ver Resultados</span>
-            <span class="arrow" :class="{ 'rotate': openMenus.stResults }">▾</span>
-        </button>
-        <transition name="expand">
-            <div v-show="openMenus.stResults" class="submenu-vm">
-                <router-link :to="{ name: 'student.oral.index' }" class="sub-nav-link-vm" active-class="active-sub">
+          <!-- ========== MENÚ STUDENT ========== -->
+          <template v-else-if="user.role === 'student'">
+            <div class="section-header pt-4">📊 Mis Resultados</div>
+            <div class="menu-group-vm">
+              <button @click="toggleMenu('stResults')" class="nav-dropdown-btn-vm" :class="{ 'active-group': openMenus.stResults }">
+                <span class="flex items-center gap-3"><span class="icon">📈</span> Ver Resultados</span>
+                <span class="arrow" :class="{ 'rotate': openMenus.stResults }">▾</span>
+              </button>
+              <transition name="expand">
+                <div v-show="openMenus.stResults" class="submenu-vm">
+                  <router-link :to="{ name: 'student.oral.index' }" class="sub-nav-link-vm" active-class="active-sub">
                     🗣️ Exámenes Orales
-                </router-link>
-                <router-link :to="{ name: 'student.history' }" class="sub-nav-link-vm" active-class="active-sub">
+                  </router-link>
+                  <router-link :to="{ name: 'student.history' }" class="sub-nav-link-vm" active-class="active-sub">
                     💻 Exámenes Computarizados
-                </router-link>
-                <!-- 🔥 NUEVO: Agregar aquí el enlace para exámenes modulares -->
-                <router-link :to="{ name: 'student.modular.index' }" class="sub-nav-link-vm" active-class="active-sub">
+                  </router-link>
+                  <router-link :to="{ name: 'student.modular.index' }" class="sub-nav-link-vm" active-class="active-sub">
                     📦 Exámenes Modulares
-                </router-link>
+                  </router-link>
+                </div>
+              </transition>
             </div>
-        </transition>
-    </div>
 
-    <div class="section-header pt-4">⚠️ Inasistencias</div>
-    <router-link :to="{ name: 'student.missed-exams' }" class="nav-link-vm" active-class="active">
-        <span class="flex items-center gap-3"><span class="icon">📋</span> Ver Inasistencias</span>
-    </router-link>
+            <div class="section-header pt-4">⚠️ Inasistencias</div>
+            <router-link :to="{ name: 'student.missed-exams' }" class="nav-link-vm" active-class="active">
+              <span class="flex items-center gap-3"><span class="icon">📋</span> Ver Inasistencias</span>
+            </router-link>
 
-    <div class="section-header pt-4">📅 Acciones</div>
-    <router-link :to="{ name: 'student.schedule' }" class="nav-link-vm" active-class="active">
-        <span class="flex items-center gap-3"><span class="icon">📅</span> Programar Examen</span>
-    </router-link>
-</template>
+            <div class="section-header pt-4">📅 Acciones</div>
+            <router-link :to="{ name: 'student.schedule' }" class="nav-link-vm" active-class="active">
+              <span class="flex items-center gap-3"><span class="icon">📅</span> Programar Examen</span>
+            </router-link>
+          </template>
         </template>
       </nav>
 
@@ -339,7 +346,6 @@ const NotificationComponent = shallowRef(null);
 
 const updateNotificationComponent = () => {
     const userRole = user.value?.role;
-    console.log('🎯 Rol detectado para campana:', userRole);
     switch (userRole) {
         case 'student':
             NotificationComponent.value = StudentNotifications;
@@ -471,7 +477,6 @@ watch(() => route.name, (name) => {
 }, { immediate: true });
 
 onMounted(async () => {
-    // Recargar usuario en onMounted
     loadUserFromStorage();
     await fetchLanguages();
     if (localStorage.getItem('loggedIn') === 'true') {
